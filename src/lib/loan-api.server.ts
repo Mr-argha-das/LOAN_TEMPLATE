@@ -101,6 +101,11 @@ function getEnv(value: unknown): RuntimeEnv {
 function requireStorage(request: Request, env: RuntimeEnv) {
   if (env.DB && env.FILES) return "durable" as const;
   if (isLocalRequest(request)) return "local" as const;
+  console.error("Storage bindings unavailable", {
+    availableBindings: Object.keys(env),
+    hasDatabase: Boolean(env.DB),
+    hasFiles: Boolean(env.FILES),
+  });
   throw new HttpError(503, "Application storage is not configured.");
 }
 
