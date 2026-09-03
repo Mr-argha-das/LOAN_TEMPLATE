@@ -41,7 +41,8 @@ export type ApplicationStatus = {
 export type LoanApplication = LoanApplicationAnswers &
   ApplicationStatus & {
     panDocument: StoredDocument;
-    aadhaarDocument: StoredDocument;
+    aadhaarFrontDocument: StoredDocument;
+    aadhaarBackDocument?: StoredDocument;
     approvalImage?: StoredDocument;
   };
 
@@ -66,12 +67,14 @@ async function readJson<T>(response: Response): Promise<T> {
 export async function createLoanApplication(
   answers: LoanApplicationAnswers,
   panDocument: SelectedUpload,
-  aadhaarDocument: SelectedUpload,
+  aadhaarFrontDocument: SelectedUpload,
+  aadhaarBackDocument: SelectedUpload,
 ): Promise<ApplicationStatus> {
   const body = new FormData();
   body.set("answers", JSON.stringify(answers));
   body.set("panDocument", panDocument.file, panDocument.name);
-  body.set("aadhaarDocument", aadhaarDocument.file, aadhaarDocument.name);
+  body.set("aadhaarFrontDocument", aadhaarFrontDocument.file, aadhaarFrontDocument.name);
+  body.set("aadhaarBackDocument", aadhaarBackDocument.file, aadhaarBackDocument.name);
 
   const application = await readJson<ApplicationStatus>(
     await fetch("/api/applications", { method: "POST", body }),

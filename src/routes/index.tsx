@@ -108,7 +108,8 @@ function Index() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<LoanApplicationAnswers>(EMPTY);
   const [panDocument, setPanDocument] = useState<SelectedUpload>();
-  const [aadhaarDocument, setAadhaarDocument] = useState<SelectedUpload>();
+  const [aadhaarFrontDocument, setAadhaarFrontDocument] = useState<SelectedUpload>();
+  const [aadhaarBackDocument, setAadhaarBackDocument] = useState<SelectedUpload>();
   const [uploadError, setUploadError] = useState("");
   const [submissionError, setSubmissionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -154,13 +155,20 @@ function Index() {
   };
 
   const submitApplication = async (netBanking: string) => {
-    if (!panDocument || !aadhaarDocument) return;
+    if (!panDocument || !aadhaarFrontDocument || !aadhaarBackDocument) return;
     const finalAnswers = { ...answers, netBanking };
     setAnswers(finalAnswers);
     setSubmitting(true);
     setSubmissionError("");
     try {
-      setApplication(await createLoanApplication(finalAnswers, panDocument, aadhaarDocument));
+      setApplication(
+        await createLoanApplication(
+          finalAnswers,
+          panDocument,
+          aadhaarFrontDocument,
+          aadhaarBackDocument,
+        ),
+      );
     } catch (error) {
       setSubmissionError(
         error instanceof Error ? error.message : "Application submit nahi ho saki.",
@@ -176,7 +184,8 @@ function Index() {
     setApprovalOpen(false);
     setAnswers(EMPTY);
     setPanDocument(undefined);
-    setAadhaarDocument(undefined);
+    setAadhaarFrontDocument(undefined);
+    setAadhaarBackDocument(undefined);
     setUploadError("");
     setSubmissionError("");
     setStep(0);
@@ -442,19 +451,38 @@ function Index() {
 
                   <label className="block rounded-md border border-dashed border-primary/50 bg-card p-4 text-center">
                     <Upload className="mx-auto h-7 w-7 text-primary" />
-                    <span className="mt-2 block text-sm font-semibold">Aadhaar Card *</span>
+                    <span className="mt-2 block text-sm font-semibold">Aadhaar Card Front *</span>
                     <span className="mt-1 block truncate text-xs text-muted-foreground">
-                      {aadhaarDocument?.name ?? "Choose Aadhaar image or PDF"}
+                      {aadhaarFrontDocument?.name ?? "Choose Aadhaar front image or PDF"}
                     </span>
                     <input
                       type="file"
                       accept="image/jpeg,image/png,application/pdf"
                       className="sr-only"
                       onChange={(event) =>
-                        void selectDocument(event.target.files?.[0], setAadhaarDocument)
+                        void selectDocument(event.target.files?.[0], setAadhaarFrontDocument)
                       }
                     />
-                    {aadhaarDocument && (
+                    {aadhaarFrontDocument && (
+                      <FileCheck2 className="mx-auto mt-2 h-5 w-5 text-success" />
+                    )}
+                  </label>
+
+                  <label className="block rounded-md border border-dashed border-primary/50 bg-card p-4 text-center">
+                    <Upload className="mx-auto h-7 w-7 text-primary" />
+                    <span className="mt-2 block text-sm font-semibold">Aadhaar Card Back *</span>
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">
+                      {aadhaarBackDocument?.name ?? "Choose Aadhaar back image or PDF"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,application/pdf"
+                      className="sr-only"
+                      onChange={(event) =>
+                        void selectDocument(event.target.files?.[0], setAadhaarBackDocument)
+                      }
+                    />
+                    {aadhaarBackDocument && (
                       <FileCheck2 className="mx-auto mt-2 h-5 w-5 text-success" />
                     )}
                   </label>
@@ -464,7 +492,7 @@ function Index() {
                   )}
                   <div className="flex justify-center pt-2">
                     <Button
-                      disabled={!panDocument || !aadhaarDocument}
+                      disabled={!panDocument || !aadhaarFrontDocument || !aadhaarBackDocument}
                       onClick={next}
                       className="h-12 rounded-full px-10 text-base"
                     >

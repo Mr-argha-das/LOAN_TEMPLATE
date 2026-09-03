@@ -47,6 +47,12 @@ type ApplicationRow = {
   aadhaar_document_key: string;
   aadhaar_document_name: string;
   aadhaar_document_type: string;
+  aadhaar_front_document_key: string | null;
+  aadhaar_front_document_name: string | null;
+  aadhaar_front_document_type: string | null;
+  aadhaar_back_document_key: string | null;
+  aadhaar_back_document_name: string | null;
+  aadhaar_back_document_type: string | null;
   approval_title: string;
   approval_image_key: string | null;
   approval_image_name: string | null;
@@ -180,8 +186,10 @@ async function insertApplication(mode: "durable" | "local", env: RuntimeEnv, row
         id, answers_json, status,
         pan_document_key, pan_document_name, pan_document_type,
         aadhaar_document_key, aadhaar_document_name, aadhaar_document_type,
+        aadhaar_front_document_key, aadhaar_front_document_name, aadhaar_front_document_type,
+        aadhaar_back_document_key, aadhaar_back_document_name, aadhaar_back_document_type,
         approval_title, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -193,6 +201,12 @@ async function insertApplication(mode: "durable" | "local", env: RuntimeEnv, row
       row.aadhaar_document_key,
       row.aadhaar_document_name,
       row.aadhaar_document_type,
+      row.aadhaar_front_document_key,
+      row.aadhaar_front_document_name,
+      row.aadhaar_front_document_type,
+      row.aadhaar_back_document_key,
+      row.aadhaar_back_document_name,
+      row.aadhaar_back_document_type,
       row.approval_title,
       row.created_at,
     )
@@ -259,7 +273,12 @@ function publicStatus(row: ApplicationRow): ApplicationStatus {
   };
 }
 
-function storedDocument(id: string, kind: "pan" | "aadhaar", name: string, type: string) {
+function storedDocument(
+  id: string,
+  kind: "pan" | "aadhaar-front" | "aadhaar-back",
+  name: string,
+  type: string,
+) {
   return {
     name,
     type,
@@ -273,12 +292,22 @@ function adminApplication(row: ApplicationRow): LoanApplication {
     ...answers,
     ...publicStatus(row),
     panDocument: storedDocument(row.id, "pan", row.pan_document_name, row.pan_document_type),
-    aadhaarDocument: storedDocument(
+    aadhaarFrontDocument: storedDocument(
       row.id,
-      "aadhaar",
-      row.aadhaar_document_name,
-      row.aadhaar_document_type,
+      "aadhaar-front",
+      row.aadhaar_front_document_name ?? row.aadhaar_document_name,
+      row.aadhaar_front_document_type ?? row.aadhaar_document_type,
     ),
+    ...(row.aadhaar_back_document_name && row.aadhaar_back_document_type
+      ? {
+          aadhaarBackDocument: storedDocument(
+            row.id,
+            "aadhaar-back",
+            row.aadhaar_back_document_name,
+            row.aadhaar_back_document_type,
+          ),
+        }
+      : {}),
     ...(row.approval_image_key && row.approval_image_name && row.approval_image_type
       ? {
           approvalImage: {
@@ -349,10 +378,20 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
   const form = await request.formData();
   const answers = parseAnswers(form.get("answers"));
   const pan = requireUpload(form.get("panDocument"), DOCUMENT_TYPES, "PAN document");
-  const aadhaar = requireUpload(form.get("aadhaarDocument"), DOCUMENT_TYPES, "Aadhaar document");
+  const aadhaarFront = requireUpload(
+    form.get("aadhaarFrontDocument"),
+    DOCUMENT_TYPES,
+    "Aadhaar front document",
+  );
+  const aadhaarBack = requireUpload(
+    form.get("aadhaarBackDocument"),
+    DOCUMENT_TYPES,
+    "Aadhaar back document",
+  );
   const id = crypto.randomUUID();
   const panKey = `applications/${id}/pan`;
-  const aadhaarKey = `applications/${id}/aadhaar`;
+  const aadhaarFrontKey = `applications/${id}/aadhaar-front`;
+  const aadhaarBackKey = `applications/${id}/aadhaar-back`;
   const createdAt = new Date().toISOString();
   const row: ApplicationRow = {
     id,
@@ -361,9 +400,16 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     pan_document_key: panKey,
     pan_document_name: pan.name,
     pan_document_type: pan.type,
-    aadhaar_document_key: aadhaarKey,
-    aadhaar_document_name: aadhaar.name,
-    aadhaar_document_type: aadhaar.type,
+    // Legacy fields remain populated for applications created before this update.
+    aadhaar_document_key: aadhaarFrontKey,
+    aadhaar_document_name: aadhaarFront.name,
+    aadhaar_document_type: aadhaarFront.type,
+    aadhaar_front_document_key: aadhaarFrontKey,
+    aadhaar_front_document_name: aadhaarFront.name,
+    aadhaar_front_document_type: aadhaarFront.type,
+    aadhaar_back_document_key: aadhaarBackKey,
+    aadhaar_back_document_name: aadhaarBack.name,
+    aadhaar_back_document_type: aadhaarBack.type,
     approval_title: "",
     approval_image_key: null,
     approval_image_name: null,
@@ -374,10 +420,15 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
 
   try {
     await putFile(mode, env, panKey, pan);
-    await putFile(mode, env, aadhaarKey, aadhaar);
+    await putFile(mode, env, aadhaarFrontKey, aadhaarFront);
+    await putFile(mode, env, aadhaarBackKey, aadhaarBack);
     await insertApplication(mode, env, row);
   } catch (error) {
-    await Promise.allSettled([deleteFile(mode, env, panKey), deleteFile(mode, env, aadhaarKey)]);
+    await Promise.allSettled([
+      deleteFile(mode, env, panKey),
+      deleteFile(mode, env, aadhaarFrontKey),
+      deleteFile(mode, env, aadhaarBackKey),
+    ]);
     throw error;
   }
   return json(publicStatus(row), 201);
@@ -463,7 +514,7 @@ export async function handleLoanApiRequest(
     }
 
     const adminFileMatch = url.pathname.match(
-      /^\/api\/admin\/applications\/([^/]+)\/files\/(pan|aadhaar|approval)$/,
+      /^\/api\/admin\/applications\/([^/]+)\/files\/(pan|aadhaar-front|aadhaar-back|approval)$/,
     );
     if (request.method === "GET" && adminFileMatch?.[1] && adminFileMatch[2]) {
       await requireAdmin(request, env);
@@ -481,13 +532,29 @@ export async function handleLoanApiRequest(
           row.pan_document_name,
         );
       }
-      if (kind === "aadhaar") {
+      if (kind === "aadhaar-front") {
         return serveFile(
           mode,
           env,
-          row.aadhaar_document_key,
-          row.aadhaar_document_type,
-          row.aadhaar_document_name,
+          row.aadhaar_front_document_key ?? row.aadhaar_document_key,
+          row.aadhaar_front_document_type ?? row.aadhaar_document_type,
+          row.aadhaar_front_document_name ?? row.aadhaar_document_name,
+        );
+      }
+      if (kind === "aadhaar-back") {
+        if (
+          !row.aadhaar_back_document_key ||
+          !row.aadhaar_back_document_type ||
+          !row.aadhaar_back_document_name
+        ) {
+          throw new HttpError(404, "Aadhaar back document not found.");
+        }
+        return serveFile(
+          mode,
+          env,
+          row.aadhaar_back_document_key,
+          row.aadhaar_back_document_type,
+          row.aadhaar_back_document_name,
         );
       }
       if (!row.approval_image_key || !row.approval_image_type || !row.approval_image_name) {

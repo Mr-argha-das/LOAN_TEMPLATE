@@ -268,9 +268,18 @@ function AdminPage() {
                       <h3 className="mb-3 mt-7 text-sm font-bold uppercase tracking-wide text-primary">
                         KYC documents
                       </h3>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <DocumentCard label="PAN Card" document={application.panDocument} />
-                        <DocumentCard label="Aadhaar Card" document={application.aadhaarDocument} />
+                        <DocumentCard
+                          label="Aadhaar Card Front"
+                          document={application.aadhaarFrontDocument}
+                        />
+                        {application.aadhaarBackDocument && (
+                          <DocumentCard
+                            label="Aadhaar Card Back"
+                            document={application.aadhaarBackDocument}
+                          />
+                        )}
                       </div>
                     </div>
 
