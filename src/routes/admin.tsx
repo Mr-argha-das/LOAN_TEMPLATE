@@ -1,6 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, ImageUp, LockKeyhole, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  FileText,
+  ImageUp,
+  LockKeyhole,
+  ScanFace,
+  ShieldCheck,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -204,8 +212,8 @@ function AdminPage() {
         <div className="mb-6 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
           <ShieldCheck className="h-6 w-6 shrink-0 text-primary" />
           <p>
-            Review all submitted information and KYC documents, then set the approval title and
-            image shown to the applicant.
+            Review all submitted information, KYC documents and the face verification video, then
+            set the approval title and image shown to the applicant.
           </p>
         </div>
 
@@ -281,6 +289,37 @@ function AdminPage() {
                           />
                         )}
                       </div>
+
+                      <h3 className="mb-3 mt-7 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-primary">
+                        <ScanFace className="h-4 w-4" /> Face verification video
+                      </h3>
+                      {application.faceVideoDocument ? (
+                        <div className="overflow-hidden rounded-lg border border-border bg-secondary/50">
+                          <video
+                            controls
+                            preload="metadata"
+                            playsInline
+                            src={application.faceVideoDocument.url}
+                            className="aspect-video w-full bg-black object-contain"
+                          />
+                          <div className="flex items-center justify-between gap-3 p-3">
+                            <p className="truncate text-xs text-muted-foreground">
+                              {application.faceVideoDocument.name}
+                            </p>
+                            <a
+                              href={application.faceVideoDocument.url}
+                              download
+                              className="shrink-0 text-xs font-medium text-primary hover:underline"
+                            >
+                              Download video
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="rounded-lg border border-dashed border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+                          No face verification video attached (older application).
+                        </p>
+                      )}
                     </div>
 
                     <div className="rounded-lg bg-secondary/60 p-4">

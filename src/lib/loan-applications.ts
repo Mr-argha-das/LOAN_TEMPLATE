@@ -43,6 +43,7 @@ export type LoanApplication = LoanApplicationAnswers &
     panDocument: StoredDocument;
     aadhaarFrontDocument: StoredDocument;
     aadhaarBackDocument?: StoredDocument;
+    faceVideoDocument?: StoredDocument;
     approvalImage?: StoredDocument;
   };
 
@@ -51,6 +52,8 @@ export const APPLICATIONS_CHANGED_EVENT = "chola-applications-changed";
 export const MAX_UPLOAD_BYTES = 900_000;
 export const ACCEPTED_DOCUMENT_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_VIDEO_BYTES = 8_000_000;
+export const ACCEPTED_VIDEO_TYPES = ["video/webm", "video/mp4", "video/quicktime"];
 
 function notifyApplicationsChanged() {
   if (typeof window !== "undefined") {
@@ -69,12 +72,14 @@ export async function createLoanApplication(
   panDocument: SelectedUpload,
   aadhaarFrontDocument: SelectedUpload,
   aadhaarBackDocument: SelectedUpload,
+  faceVideoDocument: SelectedUpload,
 ): Promise<ApplicationStatus> {
   const body = new FormData();
   body.set("answers", JSON.stringify(answers));
   body.set("panDocument", panDocument.file, panDocument.name);
   body.set("aadhaarFrontDocument", aadhaarFrontDocument.file, aadhaarFrontDocument.name);
   body.set("aadhaarBackDocument", aadhaarBackDocument.file, aadhaarBackDocument.name);
+  body.set("faceVideoDocument", faceVideoDocument.file, faceVideoDocument.name);
 
   const application = await readJson<ApplicationStatus>(
     await fetch("/api/applications", { method: "POST", body }),
@@ -135,12 +140,17 @@ export function clearActiveLoanApplication() {
   notifyApplicationsChanged();
 }
 
-export function readUpload(file: File, acceptedTypes: string[]): SelectedUpload {
+export function readUpload(
+  file: File,
+  acceptedTypes: string[],
+  maxBytes: number = MAX_UPLOAD_BYTES,
+  maxSizeLabel: string = "900 KB",
+): SelectedUpload {
   if (!acceptedTypes.includes(file.type)) {
     throw new Error("Please select a supported file type.");
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error("File size must be 900 KB or less.");
+  if (file.size > maxBytes) {
+    throw new Error(`File size must be ${maxSizeLabel} or less.`);
   }
   return {
     name: file.name,

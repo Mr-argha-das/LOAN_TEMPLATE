@@ -18,6 +18,7 @@ import {
   type LoanApplicationAnswers,
   type SelectedUpload,
 } from "@/lib/loan-applications";
+import { FaceVerification } from "@/components/FaceVerification";
 import {
   Dialog,
   DialogContent,
@@ -75,7 +76,7 @@ const EMPTY: LoanApplicationAnswers = {
   netBanking: "",
 };
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 
 function OptionGrid({
   options,
@@ -110,6 +111,7 @@ function Index() {
   const [panDocument, setPanDocument] = useState<SelectedUpload>();
   const [aadhaarFrontDocument, setAadhaarFrontDocument] = useState<SelectedUpload>();
   const [aadhaarBackDocument, setAadhaarBackDocument] = useState<SelectedUpload>();
+  const [faceVideoDocument, setFaceVideoDocument] = useState<SelectedUpload>();
   const [uploadError, setUploadError] = useState("");
   const [submissionError, setSubmissionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -155,7 +157,10 @@ function Index() {
   };
 
   const submitApplication = async (netBanking: string) => {
-    if (!panDocument || !aadhaarFrontDocument || !aadhaarBackDocument) return;
+    if (!panDocument || !aadhaarFrontDocument || !aadhaarBackDocument || !faceVideoDocument) {
+      setSubmissionError("Pehle face verification video record karein.");
+      return;
+    }
     const finalAnswers = { ...answers, netBanking };
     setAnswers(finalAnswers);
     setSubmitting(true);
@@ -167,6 +172,7 @@ function Index() {
           panDocument,
           aadhaarFrontDocument,
           aadhaarBackDocument,
+          faceVideoDocument,
         ),
       );
     } catch (error) {
@@ -186,6 +192,8 @@ function Index() {
     setPanDocument(undefined);
     setAadhaarFrontDocument(undefined);
     setAadhaarBackDocument(undefined);
+    if (faceVideoDocument) window.URL.revokeObjectURL(faceVideoDocument.previewUrl);
+    setFaceVideoDocument(undefined);
     setUploadError("");
     setSubmissionError("");
     setStep(0);
@@ -255,9 +263,14 @@ function Index() {
             {application.status === "pending" ? (
               <>
                 <LoaderCircle className="mx-auto h-14 w-14 animate-spin text-primary" />
-                <h2 className="mt-5 text-xl font-bold text-foreground">Approval pending</h2>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Aapki application submit ho chuki hai. Admin approval ka wait ho raha hai.
+                <h2 className="mt-5 text-xl font-bold text-foreground">Application Submitted</h2>
+                <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  Processing…
+                </span>
+                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                  Aapki application, documents aur face verification video submit ho chuki hain.
+                  Processing chal rahi hai — admin approval ke baad status yahin update hoga.
                 </p>
                 <p className="mt-5 rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
                   Application ID: {application.id}
@@ -530,6 +543,14 @@ function Index() {
             )}
 
             {step === 7 && (
+              <FaceVerification
+                video={faceVideoDocument}
+                onVideoChange={setFaceVideoDocument}
+                onContinue={next}
+              />
+            )}
+
+            {step === 8 && (
               <>
                 <h2 className="mb-5 text-center text-lg font-bold">Have Net-Banking?</h2>
                 <OptionGrid
@@ -538,8 +559,8 @@ function Index() {
                 />
                 {submitting && (
                   <p className="mt-4 flex items-center justify-center gap-2 text-sm text-primary">
-                    <LoaderCircle className="h-4 w-4 animate-spin" /> Application submit ho rahi
-                    hai…
+                    <LoaderCircle className="h-4 w-4 animate-spin" /> Application submit is
+                    processing…
                   </p>
                 )}
                 {submissionError && (

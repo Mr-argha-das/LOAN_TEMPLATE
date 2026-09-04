@@ -10,6 +10,11 @@ import { sites } from "@openai/sites-vite-plugin";
 export default defineConfig({
   vite: {
     plugins: [sites()],
+    server: {
+      host: "0.0.0.0",
+      // Sandbox/preview proxies reach the dev server through *.e2b.app hosts.
+      allowedHosts: true,
+    },
   },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).

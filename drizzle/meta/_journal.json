@@ -15,6 +15,13 @@
       "when": 1788430956417,
       "tag": "0001_icy_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788537910533,
+      "tag": "0002_oval_lyja",
+      "breakpoints": true
     }
   ]
 }
