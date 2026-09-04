@@ -21,6 +21,9 @@ export function SiteFooter() {
 
       <nav className="mt-10 grid grid-cols-2 gap-3 border-t border-border pt-6 text-sm">
         <Link to="/" className="text-muted-foreground hover:text-primary">
+          Home
+        </Link>
+        <Link to="/apply" className="text-muted-foreground hover:text-primary">
           Apply for Loan
         </Link>
         <Link to="/loans" className="text-muted-foreground hover:text-primary">

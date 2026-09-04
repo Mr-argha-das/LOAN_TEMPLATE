@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ApplyRouteImport } from './routes/apply'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as EligibilityRouteImport } from './routes/eligibility'
 import { Route as FaqRouteImport } from './routes/faq'
@@ -30,6 +31,11 @@ const AboutRoute = AboutRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApplyRoute = ApplyRouteImport.update({
+  id: '/apply',
+  path: '/apply',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContactRoute = ContactRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/admin': typeof AdminRoute
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/eligibility': typeof EligibilityRoute
   '/faq': typeof FaqRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/admin': typeof AdminRoute
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/eligibility': typeof EligibilityRoute
   '/faq': typeof FaqRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/admin': typeof AdminRoute
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/eligibility': typeof EligibilityRoute
   '/faq': typeof FaqRoute
@@ -84,15 +93,30 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/about' | '/admin' | '/contact' | '/eligibility' | '/faq' | '/loans'
+    | '/'
+    | '/about'
+    | '/admin'
+    | '/apply'
+    | '/contact'
+    | '/eligibility'
+    | '/faq'
+    | '/loans'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/about' | '/admin' | '/contact' | '/eligibility' | '/faq' | '/loans'
+    | '/'
+    | '/about'
+    | '/admin'
+    | '/apply'
+    | '/contact'
+    | '/eligibility'
+    | '/faq'
+    | '/loans'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/admin'
+    | '/apply'
     | '/contact'
     | '/eligibility'
     | '/faq'
@@ -103,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRoute
+  ApplyRoute: typeof ApplyRoute
   ContactRoute: typeof ContactRoute
   EligibilityRoute: typeof EligibilityRoute
   FaqRoute: typeof FaqRoute
@@ -130,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/apply': {
+      id: '/apply'
+      path: '/apply'
+      fullPath: '/apply'
+      preLoaderRoute: typeof ApplyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -167,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   AdminRoute: AdminRoute,
+  ApplyRoute: ApplyRoute,
   ContactRoute: ContactRoute,
   EligibilityRoute: EligibilityRoute,
   FaqRoute: FaqRoute,

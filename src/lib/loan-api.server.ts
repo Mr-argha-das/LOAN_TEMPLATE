@@ -96,7 +96,13 @@ function json(value: unknown, status = 200, headers?: HeadersInit) {
 
 function isLocalRequest(request: Request) {
   const hostname = new URL(request.url).hostname;
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    // Ephemeral sandbox preview hosts are development environments too.
+    hostname.endsWith(".e2b.app")
+  );
 }
 
 function getEnv(value: unknown): RuntimeEnv {

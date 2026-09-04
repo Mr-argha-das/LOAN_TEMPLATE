@@ -3,7 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 
 const NAV = [
-  { to: "/", label: "Apply" },
+  { to: "/", label: "Home" },
+  { to: "/apply", label: "Apply" },
   { to: "/loans", label: "Loan Types" },
   { to: "/eligibility", label: "Eligibility" },
   { to: "/about", label: "About" },
