@@ -16,6 +16,10 @@ dist-ssr
 .nitro
 *.local
 
+# VPS server data (SQLite + uploaded files) — server par hi rehta hai, git me nahi
+vps-data/
+.env
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
