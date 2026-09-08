@@ -1,4 +1,4 @@
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const loanApplications = sqliteTable(
   "loan_applications",
@@ -20,6 +20,9 @@ export const loanApplications = sqliteTable(
     aadhaarBackDocumentKey: text("aadhaar_back_document_key"),
     aadhaarBackDocumentName: text("aadhaar_back_document_name"),
     aadhaarBackDocumentType: text("aadhaar_back_document_type"),
+    approvedAmount: integer("approved_amount"),
+    bankDetailsJson: text("bank_details_json"),
+    disbursementSubmittedAt: text("disbursement_submitted_at"),
     approvalTitle: text("approval_title").notNull().default(""),
     approvalImageKey: text("approval_image_key"),
     approvalImageName: text("approval_image_name"),

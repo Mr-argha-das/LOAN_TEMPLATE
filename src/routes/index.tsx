@@ -3,14 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { CholaHeader } from "@/components/CholaHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Award, FileCheck2, LoaderCircle, Upload } from "lucide-react";
+import { FileCheck2, LoaderCircle, Upload } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { SiteFooter } from "@/components/SiteFooter";
 import bannerImg from "@/assets/loan-banner.jpg";
 import {
   ACCEPTED_DOCUMENT_TYPES,
   APPLICATIONS_CHANGED_EVENT,
-  clearActiveLoanApplication,
   createLoanApplication,
   getActiveLoanApplication,
   readUpload,
@@ -18,13 +17,7 @@ import {
   type LoanApplicationAnswers,
   type SelectedUpload,
 } from "@/lib/loan-applications";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { LoanDisbursement } from "@/components/LoanDisbursement";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -80,7 +73,9 @@ const TOTAL_STEPS = 8;
 function OptionGrid({
   options,
   onSelect,
+  disabled = false,
 }: {
+  disabled?: boolean;
   options: string[];
   onSelect: (value: string) => void;
 }) {
@@ -90,6 +85,7 @@ function OptionGrid({
         <button
           key={option}
           type="button"
+          disabled={disabled}
           onClick={() => onSelect(option)}
           className="rounded-md border border-primary/40 bg-card px-3 py-4 text-sm text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
         >
@@ -114,7 +110,6 @@ function Index() {
   const [submissionError, setSubmissionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [application, setApplication] = useState<ApplicationStatus>();
-  const [approvalOpen, setApprovalOpen] = useState(false);
 
   const set = (patch: Partial<LoanApplicationAnswers>) => setAnswers((a) => ({ ...a, ...patch }));
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
@@ -137,10 +132,6 @@ function Index() {
     };
   }, []);
 
-  useEffect(() => {
-    if (application?.status === "approved") setApprovalOpen(true);
-  }, [application?.status]);
-
   const selectDocument = (
     file: File | undefined,
     onSuccess: (document: SelectedUpload) => void,
@@ -155,7 +146,7 @@ function Index() {
   };
 
   const submitApplication = async (netBanking: string) => {
-    if (!panDocument || !aadhaarFrontDocument || !aadhaarBackDocument) return;
+    if (submitting || !panDocument || !aadhaarFrontDocument || !aadhaarBackDocument) return;
     const finalAnswers = { ...answers, netBanking };
     setAnswers(finalAnswers);
     setSubmitting(true);
@@ -171,24 +162,13 @@ function Index() {
       );
     } catch (error) {
       setSubmissionError(
-        error instanceof Error ? error.message : "Application submit nahi ho saki.",
+        error instanceof Error
+          ? error.message
+          : "The application could not be submitted. Please try again.",
       );
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const startAnotherApplication = () => {
-    clearActiveLoanApplication();
-    setApplication(undefined);
-    setApprovalOpen(false);
-    setAnswers(EMPTY);
-    setPanDocument(undefined);
-    setAadhaarFrontDocument(undefined);
-    setAadhaarBackDocument(undefined);
-    setUploadError("");
-    setSubmissionError("");
-    setStep(0);
   };
 
   const age = useMemo(() => {
@@ -250,31 +230,25 @@ function Index() {
           />
         </div>
 
-        {application ? (
+        {application?.status === "approved" ? (
+          <LoanDisbursement
+            key={application.id}
+            application={application}
+            onUpdate={setApplication}
+          />
+        ) : application ? (
           <div className="mt-4 rounded-md border border-primary/20 bg-card/80 px-5 py-10 text-center shadow-sm backdrop-blur-sm">
-            {application.status === "pending" ? (
-              <>
-                <LoaderCircle className="mx-auto h-14 w-14 animate-spin text-primary" />
-                <h2 className="mt-5 text-xl font-bold text-foreground">Approval pending</h2>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Aapki application submit ho chuki hai. Admin approval ka wait ho raha hai.
-                </p>
-                <p className="mt-5 rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
-                  Application ID: {application.id}
-                </p>
-              </>
-            ) : (
-              <>
-                <Award className="mx-auto h-14 w-14 text-success" strokeWidth={1.5} />
-                <h2 className="mt-5 text-xl font-bold text-success">Application approved</h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Approval details dekhne ke liye neeche button dabayein.
-                </p>
-                <Button className="mt-5 rounded-full px-8" onClick={() => setApprovalOpen(true)}>
-                  View approval
-                </Button>
-              </>
-            )}
+            <>
+              <LoaderCircle className="mx-auto h-14 w-14 animate-spin text-primary" />
+              <h2 className="mt-5 text-xl font-bold text-foreground">Approval pending</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Your application has been submitted and is awaiting review. Your approved amount
+                will appear here once confirmed.
+              </p>
+              <p className="mt-5 rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                Application ID: {application.id}
+              </p>
+            </>
           </div>
         ) : (
           <div className="mt-4 rounded-md border border-border/60 bg-card/60 p-4 backdrop-blur-sm">
@@ -534,12 +508,12 @@ function Index() {
                 <h2 className="mb-5 text-center text-lg font-bold">Have Net-Banking?</h2>
                 <OptionGrid
                   options={["Yes", "No"]}
+                  disabled={submitting}
                   onSelect={(value) => void submitApplication(value)}
                 />
                 {submitting && (
                   <p className="mt-4 flex items-center justify-center gap-2 text-sm text-primary">
-                    <LoaderCircle className="h-4 w-4 animate-spin" /> Application submit ho rahi
-                    hai…
+                    <LoaderCircle className="h-4 w-4 animate-spin" /> Submitting your application…
                   </p>
                 )}
                 {submissionError && (
@@ -553,6 +527,7 @@ function Index() {
         {!application && step > 0 && (
           <button
             type="button"
+            disabled={submitting}
             onClick={prev}
             className="mt-6 rounded-full bg-card px-5 py-3 text-sm text-foreground shadow-sm"
           >
@@ -587,31 +562,6 @@ function Index() {
           </Link>
         </div>
       </main>
-
-      <Dialog open={approvalOpen} onOpenChange={setApprovalOpen}>
-        <DialogContent className="max-w-md overflow-hidden p-0">
-          {application?.approvalImageUrl && (
-            <img
-              src={application.approvalImageUrl}
-              alt="Loan approval"
-              className="max-h-72 w-full object-cover"
-            />
-          )}
-          <div className="p-6 pt-2 text-center">
-            <DialogHeader className="text-center">
-              <DialogTitle className="text-2xl text-success">
-                {application?.approvalTitle || "Loan application approved"}
-              </DialogTitle>
-              <DialogDescription>
-                Congratulations! Admin ne aapki loan application approve kar di hai.
-              </DialogDescription>
-            </DialogHeader>
-            <Button className="mt-6 rounded-full px-8" onClick={startAnotherApplication}>
-              Start new application
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <SiteFooter />
     </div>

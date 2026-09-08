@@ -1,5 +1,6 @@
 import type {
   ApplicationStatus,
+  BankDetails,
   LoanApplication,
   LoanApplicationAnswers,
   StoredDocument,
@@ -38,6 +39,9 @@ type RuntimeEnv = {
 };
 
 type ApplicationRow = {
+  approved_amount: number | null;
+  bank_details_json: string | null;
+  disbursement_submitted_at: string | null;
   id: string;
   answers_json: string;
   status: "pending" | "approved";
@@ -91,7 +95,12 @@ function json(value: unknown, status = 200, headers?: HeadersInit) {
 
 function isLocalRequest(request: Request) {
   const hostname = new URL(request.url).hostname;
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    (import.meta.env?.DEV === true && hostname.endsWith(".e2b.app"))
+  );
 }
 
 function getEnv(value: unknown): RuntimeEnv {
@@ -251,7 +260,7 @@ async function updateApproval(mode: "durable" | "local", env: RuntimeEnv, row: A
     .DB!.prepare(
       `UPDATE loan_applications
        SET status = 'approved', approval_title = ?, approval_image_key = ?,
-           approval_image_name = ?, approval_image_type = ?, reviewed_at = ?
+           approval_image_name = ?, approval_image_type = ?, reviewed_at = ?, approved_amount = ?
        WHERE id = ?`,
     )
     .bind(
@@ -260,6 +269,7 @@ async function updateApproval(mode: "durable" | "local", env: RuntimeEnv, row: A
       row.approval_image_name,
       row.approval_image_type,
       row.reviewed_at,
+      row.approved_amount,
       row.id,
     )
     .run();
@@ -270,6 +280,16 @@ function publicStatus(row: ApplicationRow): ApplicationStatus {
     id: row.id,
     status: row.status,
     approvalTitle: row.approval_title,
+    ...(row.approved_amount ? { approvedAmount: row.approved_amount } : {}),
+    ...(row.disbursement_submitted_at
+      ? {
+          disbursementStatus: "processing" as const,
+          disbursementSubmittedAt: row.disbursement_submitted_at,
+          bankAccountLast4: (JSON.parse(row.bank_details_json!) as BankDetails).accountNumber.slice(
+            -4,
+          ),
+        }
+      : {}),
     ...(row.status === "approved" && row.approval_image_key
       ? { approvalImageUrl: `/api/applications/${encodeURIComponent(row.id)}/approval-image` }
       : {}),
@@ -296,6 +316,9 @@ function adminApplication(row: ApplicationRow): LoanApplication {
   return {
     ...answers,
     ...publicStatus(row),
+    ...(row.bank_details_json
+      ? { bankDetails: JSON.parse(row.bank_details_json) as BankDetails }
+      : {}),
     panDocument: storedDocument(row.id, "pan", row.pan_document_name, row.pan_document_type),
     aadhaarFrontDocument: storedDocument(
       row.id,
@@ -400,6 +423,9 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
   const createdAt = new Date().toISOString();
   const row: ApplicationRow = {
     id,
+    approved_amount: null,
+    bank_details_json: null,
+    disbursement_submitted_at: null,
     answers_json: JSON.stringify(answers),
     status: "pending",
     pan_document_key: panKey,
@@ -463,6 +489,13 @@ async function handleApproval(request: Request, env: RuntimeEnv, id: string) {
   if (!existing) throw new HttpError(404, "Application not found.");
   const form = await request.formData();
   const title = requireText(form.get("approvalTitle"), "Approval title");
+  const amount = Number(form.get("approvedAmount"));
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 100_000_000) {
+    throw new HttpError(400, "Enter a valid approved amount between ₹1 and ₹10,00,00,000.");
+  }
+  if (existing.disbursement_submitted_at) {
+    throw new HttpError(409, "Approval cannot be changed after disbursement is requested.");
+  }
   const imageValue = form.get("approvalImage");
   let imageKey = existing.approval_image_key;
   let imageName = existing.approval_image_name;
@@ -483,6 +516,7 @@ async function handleApproval(request: Request, env: RuntimeEnv, id: string) {
     ...existing,
     status: "approved",
     approval_title: title,
+    approved_amount: amount,
     approval_image_key: imageKey,
     approval_image_name: imageName,
     approval_image_type: imageType,
@@ -490,6 +524,50 @@ async function handleApproval(request: Request, env: RuntimeEnv, id: string) {
   };
   await updateApproval(mode, env, updated);
   return json(adminApplication(updated));
+}
+
+async function handleDisbursement(request: Request, env: RuntimeEnv, id: string) {
+  const mode = requireStorage(request, env);
+  const row = await getApplication(mode, env, id);
+  if (!row) throw new HttpError(404, "Application not found.");
+  if (row.status !== "approved" || !row.approved_amount) {
+    throw new HttpError(409, "An approved loan amount is required before disbursement.");
+  }
+  if (row.disbursement_submitted_at) return json(publicStatus(row));
+  const input = (await request.json().catch(() => null)) as Partial<BankDetails> | null;
+  const details: BankDetails = {
+    accountHolder: typeof input?.accountHolder === "string" ? input.accountHolder.trim() : "",
+    bankName: typeof input?.bankName === "string" ? input.bankName.trim() : "",
+    accountNumber: typeof input?.accountNumber === "string" ? input.accountNumber.trim() : "",
+    ifsc: typeof input?.ifsc === "string" ? input.ifsc.trim().toUpperCase() : "",
+  };
+  if (
+    details.accountHolder.length < 2 ||
+    details.accountHolder.length > 100 ||
+    details.bankName.length < 2 ||
+    details.bankName.length > 100 ||
+    !/^\d{9,18}$/.test(details.accountNumber) ||
+    !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(details.ifsc)
+  ) {
+    throw new HttpError(
+      400,
+      "Enter a valid account holder, bank name, account number and IFSC code.",
+    );
+  }
+  const submittedAt = new Date().toISOString();
+  if (mode === "local") {
+    row.bank_details_json = JSON.stringify(details);
+    row.disbursement_submitted_at = submittedAt;
+  } else {
+    await env
+      .DB!.prepare(
+        `UPDATE loan_applications SET bank_details_json = ?, disbursement_submitted_at = ?
+      WHERE id = ? AND status = 'approved' AND disbursement_submitted_at IS NULL`,
+      )
+      .bind(JSON.stringify(details), submittedAt, id)
+      .run();
+  }
+  return json(publicStatus((await getApplication(mode, env, id))!));
 }
 
 export async function handleLoanApiRequest(
@@ -511,6 +589,11 @@ export async function handleLoanApiRequest(
       await requireAdmin(request, env);
       const mode = requireStorage(request, env);
       return json((await getApplications(mode, env)).map(adminApplication));
+    }
+
+    const disbursementMatch = url.pathname.match(/^\/api\/applications\/([^/]+)\/disbursement$/);
+    if (request.method === "POST" && disbursementMatch?.[1]) {
+      return await handleDisbursement(request, env, decodeURIComponent(disbursementMatch[1]));
     }
 
     const approvalMatch = url.pathname.match(/^\/api\/admin\/applications\/([^/]+)\/approve$/);

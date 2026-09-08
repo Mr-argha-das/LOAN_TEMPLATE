@@ -8,6 +8,7 @@ import {
   ACCEPTED_IMAGE_TYPES,
   APPLICATIONS_CHANGED_EVENT,
   approveLoanApplication,
+  formatLoanAmount,
   getLoanApplications,
   loginAdmin,
   readUpload,
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 type ApprovalDraft = {
+  amount?: string;
   title?: string;
   image?: SelectedUpload;
   error?: string;
@@ -140,7 +142,12 @@ function AdminPage() {
 
     setBusy(true);
     try {
-      await approveLoanApplication(application.id, title, draft?.image);
+      await approveLoanApplication(
+        application.id,
+        title,
+        draft?.image,
+        Number(draft?.amount ?? application.approvedAmount ?? 20000),
+      );
       await refresh();
       setSavedId(application.id);
     } catch (error) {
@@ -159,7 +166,7 @@ function AdminPage() {
           <LockKeyhole className="mx-auto h-12 w-12 text-primary" />
           <h1 className="mt-4 text-center text-2xl font-bold">Admin sign in</h1>
           <p className="mt-2 text-center text-sm text-muted-foreground">
-            Loan applications aur KYC documents dekhne ke liye admin password enter karein.
+            Enter your admin password to review loan applications and KYC documents.
           </p>
           <label className="mt-6 block text-sm font-medium">Admin password</label>
           <Input
@@ -288,8 +295,41 @@ function AdminPage() {
                         {isApproved ? "Change approval message" : "Approve application"}
                       </h3>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        This title and image will open in a dialog on the applicant's screen.
+                        The amount, title and image will appear on the applicant's approval screen.
                       </p>
+                      <label
+                        htmlFor={`amount-${application.id}`}
+                        className="mt-5 block text-sm font-medium"
+                      >
+                        Approved Amount (INR) *
+                      </label>
+                      <Input
+                        id={`amount-${application.id}`}
+                        type="number"
+                        min={1}
+                        max={100000000}
+                        step={1}
+                        disabled={Boolean(application.disbursementStatus)}
+                        value={draft?.amount ?? application.approvedAmount ?? 20000}
+                        onChange={(event) =>
+                          changeDraft(application.id, { amount: event.target.value })
+                        }
+                        className="mt-2 bg-card"
+                      />
+                      {application.disbursementStatus && (
+                        <div className="mt-4 rounded-md bg-secondary p-3 text-sm">
+                          <p className="font-semibold">
+                            Disbursement Processing ·{" "}
+                            {formatLoanAmount(application.approvedAmount!)}
+                          </p>
+                          <p>
+                            {application.bankDetails?.accountHolder} ·{" "}
+                            {application.bankDetails?.bankName}
+                          </p>
+                          <p>Account: {application.bankDetails?.accountNumber}</p>
+                          <p>IFSC: {application.bankDetails?.ifsc}</p>
+                        </div>
+                      )}
                       <label className="mt-5 block text-sm font-medium">Approval title *</label>
                       <Input
                         value={approvalTitle}
@@ -336,7 +376,12 @@ function AdminPage() {
                       )}
                       <Button
                         className="mt-5 w-full"
-                        disabled={!approvalTitle.trim() || !hasApprovalImage || busy}
+                        disabled={
+                          !approvalTitle.trim() ||
+                          !hasApprovalImage ||
+                          busy ||
+                          Boolean(application.disbursementStatus)
+                        }
                         onClick={() => void saveApproval(application)}
                       >
                         {busy ? "Saving…" : isApproved ? "Update approval" : "Approve application"}

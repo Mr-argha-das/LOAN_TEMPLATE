@@ -29,7 +29,18 @@ export type LoanApplicationAnswers = {
   netBanking: string;
 };
 
+export type BankDetails = {
+  accountHolder: string;
+  bankName: string;
+  accountNumber: string;
+  ifsc: string;
+};
+
 export type ApplicationStatus = {
+  approvedAmount?: number;
+  disbursementStatus?: "processing";
+  disbursementSubmittedAt?: string;
+  bankAccountLast4?: string;
   id: string;
   status: "pending" | "approved";
   approvalTitle: string;
@@ -40,6 +51,7 @@ export type ApplicationStatus = {
 
 export type LoanApplication = LoanApplicationAnswers &
   ApplicationStatus & {
+    bankDetails?: BankDetails;
     panDocument: StoredDocument;
     aadhaarFrontDocument: StoredDocument;
     aadhaarBackDocument?: StoredDocument;
@@ -114,9 +126,11 @@ export async function approveLoanApplication(
   id: string,
   approvalTitle: string,
   approvalImage: SelectedUpload | undefined,
+  approvedAmount: number,
 ): Promise<LoanApplication> {
   const body = new FormData();
   body.set("approvalTitle", approvalTitle.trim());
+  body.set("approvedAmount", String(approvedAmount));
   if (approvalImage) body.set("approvalImage", approvalImage.file, approvalImage.name);
 
   const application = await readJson<LoanApplication>(
@@ -149,4 +163,25 @@ export function readUpload(file: File, acceptedTypes: string[]): SelectedUpload 
     file,
     previewUrl: URL.createObjectURL(file),
   };
+}
+
+export async function submitBankDetails(
+  id: string,
+  details: BankDetails,
+): Promise<ApplicationStatus> {
+  return readJson<ApplicationStatus>(
+    await fetch(`/api/applications/${encodeURIComponent(id)}/disbursement`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(details),
+    }),
+  );
+}
+
+export function formatLoanAmount(amount: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
 }

@@ -9,6 +9,7 @@ import { sites } from "@openai/sites-vite-plugin";
 
 export default defineConfig({
   vite: {
+    server: { host: "0.0.0.0", allowedHosts: [".e2b.app"] },
     plugins: [sites()],
   },
   tanstackStart: {
