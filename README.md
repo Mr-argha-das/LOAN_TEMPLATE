@@ -85,3 +85,64 @@ Notes:
 - R2 requires a payment method on the Cloudflare account even on the free tier
   (10 GB storage is free). To avoid that, deploy with D1 only and store uploads
   elsewhere.
+
+## Self-hosting on your own server (Node + SQLite)
+
+The Node build stores everything on disk: `DATA_DIR/loan.db` (SQLite) and
+`DATA_DIR/files` (KYC documents, approval images, payment QR). Migrations from
+`drizzle/` run automatically on boot, so there is no separate migration step.
+
+```sh
+cd /var/www/html/LOAN_TEMPLATE
+git pull origin arena/01a0856a-loan-template
+npm install
+npm run build:node
+
+# quick test on port 3000
+DATA_DIR=$PWD/data ADMIN_PASSWORD='your-strong-password' PORT=3000 npm start
+```
+
+Keep it running with PM2 (edit `ADMIN_PASSWORD` in `ecosystem.config.cjs` first):
+
+```sh
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 save && pm2 startup
+```
+
+Then put nginx in front of it:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    client_max_body_size 2m;   # uploads are capped at 900 KB each
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```sh
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d your-domain.com    # HTTPS, required for secure admin cookies
+```
+
+Updating later:
+
+```sh
+git pull origin arena/01a0856a-loan-template
+npm install
+npm run build:node
+pm2 restart loan-app
+```
+
+Requires Node 22+ (uses the built-in `node:sqlite` module). Back up `DATA_DIR`
+regularly — it holds every application, document and bank detail.

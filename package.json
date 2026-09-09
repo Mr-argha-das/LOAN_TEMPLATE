@@ -15,7 +15,9 @@
     "test": "node --test scripts/test-loan-flow.mjs",
     "build:cf": "vite build && node scripts/prepare-cloudflare-deploy.mjs",
     "deploy": "npm run build:cf && wrangler deploy --config .output/server/wrangler.json",
-    "db:migrate:remote": "node scripts/apply-d1-migrations.mjs"
+    "db:migrate:remote": "node scripts/apply-d1-migrations.mjs",
+    "build:node": "NITRO_PRESET=node-server vite build",
+    "start": "node .output/server/index.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
