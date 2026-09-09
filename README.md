@@ -98,16 +98,24 @@ git pull origin arena/01a0856a-loan-template
 npm install
 npm run build:node
 
-# quick test on port 3000
-DATA_DIR=$PWD/data ADMIN_PASSWORD='your-strong-password' PORT=3000 npm start
+# quick test on port 8080
+DATA_DIR=$PWD/data ADMIN_PASSWORD='your-strong-password' PORT=8080 npm start
 ```
 
-Keep it running with PM2 (edit `ADMIN_PASSWORD` in `ecosystem.config.cjs` first):
+Keep it running with PM2 (edit `ADMIN_PASSWORD` in `ecosystem.config.cjs` first).
+It defaults to port 8080 on all interfaces:
 
 ```sh
 npm install -g pm2
 pm2 start ecosystem.config.cjs
 pm2 save && pm2 startup
+```
+
+Useful PM2 commands: `pm2 logs loan-app`, `pm2 restart loan-app`, `pm2 status`.
+If port 8080 is already taken by something else, pick another one:
+
+```sh
+PORT=9000 pm2 start ecosystem.config.cjs --update-env
 ```
 
 Then put nginx in front of it:
@@ -120,7 +128,7 @@ server {
     client_max_body_size 2m;   # uploads are capped at 900 KB each
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
