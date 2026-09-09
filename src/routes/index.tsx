@@ -19,6 +19,8 @@ import {
 } from "@/lib/loan-applications";
 import { LoanDisbursement } from "@/components/LoanDisbursement";
 
+const PAN_PATTERN = /^[A-Z]{5}\d{4}[A-Z]$/;
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -182,6 +184,8 @@ function Index() {
     return a >= 0 ? String(a) : "";
   }, [answers.dob]);
 
+  const panValid = PAN_PATTERN.test(answers.pan.trim());
+
   const contactValid =
     answers.firstName.trim() &&
     answers.lastName.trim() &&
@@ -190,7 +194,7 @@ function Index() {
     answers.pincode.length === 6 &&
     answers.gender &&
     answers.dob &&
-    answers.pan.trim().length === 10;
+    panValid;
 
   const progress = application ? 100 : ((step + 1) / TOTAL_STEPS) * 100;
 
@@ -377,14 +381,35 @@ function Index() {
                   </div>
                   <Input readOnly placeholder="Age" value={age} className="h-12 bg-card" />
                   <div>
-                    <label className="text-sm text-foreground">Pan Number *</label>
+                    <label htmlFor="pan-number" className="text-sm text-foreground">
+                      Pan Number *
+                    </label>
                     <Input
-                      placeholder="Pan Number"
+                      id="pan-number"
+                      placeholder="ABCDE1234F"
                       maxLength={10}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      aria-invalid={answers.pan.length > 0 && !panValid}
+                      aria-describedby="pan-help"
                       value={answers.pan}
-                      onChange={(e) => set({ pan: e.target.value.toUpperCase() })}
+                      onChange={(e) =>
+                        set({ pan: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })
+                      }
                       className="mt-1 h-12 bg-card"
                     />
+                    <p
+                      id="pan-help"
+                      className={`mt-1 text-xs ${
+                        answers.pan.length > 0 && !panValid
+                          ? "text-destructive"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {answers.pan.length > 0 && !panValid
+                        ? "Enter a valid PAN in the format ABCDE1234F (5 letters, 4 digits, 1 letter)."
+                        : "Format: 5 letters, 4 digits, 1 letter — e.g. ABCDE1234F"}
+                    </p>
                   </div>
                   <div className="flex justify-center pt-2">
                     <Button
@@ -517,7 +542,16 @@ function Index() {
                   </p>
                 )}
                 {submissionError && (
-                  <p className="mt-4 text-center text-sm text-destructive">{submissionError}</p>
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-destructive">{submissionError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(3)}
+                      className="mt-2 text-sm font-medium text-primary underline"
+                    >
+                      Go back and correct your details
+                    </button>
+                  </div>
                 )}
               </>
             )}
