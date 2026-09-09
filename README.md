@@ -46,3 +46,42 @@ Local development and development-only Arena previews use in-memory storage when
 D1/R2 are absent (data resets when the server restarts). Production still requires
 `DB`, `FILES` and `ADMIN_PASSWORD` bindings. Use test documents and bank details in
 development. Run `npm test` for the local and SQLite-backed API flow checks.
+
+## Free deployment to Cloudflare (Workers + D1 + R2)
+
+The app runs as a Cloudflare Worker and expects two bindings: `DB` (D1) and
+`FILES` (R2). Everything below fits inside Cloudflare's free tier.
+
+```sh
+# 1. Sign in (opens a browser once)
+npx wrangler login
+
+# 2. Create the database and the file bucket
+npx wrangler d1 create chola-loan-db     # copy the printed database_id
+npx wrangler r2 bucket create chola-loan-files
+
+# 3. Paste the database_id into wrangler.cloudflare.json
+
+# 4. Create the tables in the remote database
+npm run db:migrate:remote
+
+# 5. Set the admin password (used by /admin)
+npx wrangler secret put ADMIN_PASSWORD --name chola-loan-app
+
+# 6. Build and deploy
+npm run deploy
+```
+
+The deploy prints the live URL (`https://chola-loan-app.<subdomain>.workers.dev`).
+The admin console lives at `/admin`.
+
+Re-deploying later is just `npm run deploy`; run `npm run db:migrate:remote`
+again whenever a new file is added to `drizzle/`.
+
+Notes:
+
+- Without `DB`/`FILES` bindings the API returns 503 in production; local `vite dev`
+  falls back to in-memory storage with the admin password `admin123`.
+- R2 requires a payment method on the Cloudflare account even on the free tier
+  (10 GB storage is free). To avoid that, deploy with D1 only and store uploads
+  elsewhere.
