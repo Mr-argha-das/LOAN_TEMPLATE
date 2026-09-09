@@ -1,6 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, ImageUp, LockKeyhole, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  BadgeCheck,
+  CheckCircle2,
+  FileText,
+  ImageUp,
+  LockKeyhole,
+  QrCode,
+  ShieldCheck,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +20,9 @@ import {
   formatLoanAmount,
   getLoanApplications,
   loginAdmin,
+  markLoanTransferred,
   readUpload,
+  savePaymentDetails,
   type LoanApplication,
   type SelectedUpload,
   type StoredDocument,
@@ -32,6 +43,11 @@ type ApprovalDraft = {
   title?: string;
   image?: SelectedUpload;
   error?: string;
+  fee?: string;
+  upi?: string;
+  qr?: SelectedUpload;
+  paymentError?: string;
+  paymentSaved?: boolean;
 };
 
 const DETAILS: Array<{ label: string; key: keyof LoanApplication }> = [
@@ -153,6 +169,59 @@ function AdminPage() {
     } catch (error) {
       changeDraft(application.id, {
         error: error instanceof Error ? error.message : "Approval could not be saved.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectQrImage = (id: string, file: File | undefined) => {
+    if (!file) return;
+    try {
+      changeDraft(id, { qr: readUpload(file, ACCEPTED_IMAGE_TYPES), paymentError: "" });
+    } catch (error) {
+      changeDraft(id, {
+        paymentError: error instanceof Error ? error.message : "QR upload failed.",
+      });
+    }
+  };
+
+  const savePayment = async (application: LoanApplication) => {
+    const draft = drafts[application.id];
+    const fee = Number(draft?.fee ?? application.processingFeeAmount ?? 0);
+    if (!fee || (!draft?.qr && !application.paymentQr)) return;
+    setBusy(true);
+    try {
+      await savePaymentDetails(
+        application.id,
+        fee,
+        draft?.upi ?? application.paymentUpiId ?? "",
+        draft?.qr,
+      );
+      await refresh();
+      changeDraft(application.id, { paymentError: "" });
+      setDrafts((current) => ({
+        ...current,
+        [application.id]: { ...current[application.id], paymentSaved: true },
+      }));
+    } catch (error) {
+      changeDraft(application.id, {
+        paymentError:
+          error instanceof Error ? error.message : "Payment details could not be saved.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const transferLoan = async (application: LoanApplication) => {
+    setBusy(true);
+    try {
+      await markLoanTransferred(application.id);
+      await refresh();
+    } catch (error) {
+      changeDraft(application.id, {
+        paymentError: error instanceof Error ? error.message : "Transfer could not be marked.",
       });
     } finally {
       setBusy(false);
@@ -386,6 +455,119 @@ function AdminPage() {
                       >
                         {busy ? "Saving…" : isApproved ? "Update approval" : "Approve application"}
                       </Button>
+
+                      <div className="mt-6 border-t border-border pt-5">
+                        <h3 className="flex items-center gap-2 text-base font-bold">
+                          <QrCode className="h-4 w-4 text-primary" /> Processing fee &amp; QR
+                        </h3>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          After the applicant submits bank details, this fee amount and QR code are
+                          shown to them for payment.
+                        </p>
+                        <label
+                          htmlFor={`fee-${application.id}`}
+                          className="mt-4 block text-sm font-medium"
+                        >
+                          Processing fee (INR) *
+                        </label>
+                        <Input
+                          id={`fee-${application.id}`}
+                          type="number"
+                          min={1}
+                          max={10000000}
+                          step={1}
+                          value={draft?.fee ?? application.processingFeeAmount ?? ""}
+                          onChange={(event) =>
+                            changeDraft(application.id, { fee: event.target.value })
+                          }
+                          placeholder="e.g. 2500"
+                          className="mt-2 bg-card"
+                        />
+                        <label
+                          htmlFor={`upi-${application.id}`}
+                          className="mt-4 block text-sm font-medium"
+                        >
+                          UPI ID (optional)
+                        </label>
+                        <Input
+                          id={`upi-${application.id}`}
+                          value={draft?.upi ?? application.paymentUpiId ?? ""}
+                          onChange={(event) =>
+                            changeDraft(application.id, { upi: event.target.value })
+                          }
+                          placeholder="name@bank"
+                          className="mt-2 bg-card"
+                        />
+                        <label className="mt-4 block cursor-pointer rounded-lg border border-dashed border-primary/50 bg-card p-4 text-center">
+                          {(draft?.qr?.previewUrl ?? application.paymentQr?.url) ? (
+                            <img
+                              src={draft?.qr?.previewUrl ?? application.paymentQr?.url}
+                              alt="Payment QR preview"
+                              className="mx-auto h-40 w-40 rounded-md object-contain"
+                            />
+                          ) : (
+                            <QrCode className="mx-auto h-10 w-10 text-primary" />
+                          )}
+                          <span className="mt-2 block text-sm font-semibold">
+                            {draft?.qr || application.paymentQr
+                              ? "Change payment QR"
+                              : "Upload payment QR *"}
+                          </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            JPG, PNG or WebP · maximum 900 KB
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            onChange={(event) =>
+                              selectQrImage(application.id, event.target.files?.[0])
+                            }
+                          />
+                        </label>
+                        {draft?.paymentError && (
+                          <p className="mt-3 text-sm text-destructive">{draft.paymentError}</p>
+                        )}
+                        {draft?.paymentSaved && (
+                          <p className="mt-3 flex items-center gap-2 text-sm font-medium text-success">
+                            <CheckCircle2 className="h-4 w-4" /> Payment details saved
+                          </p>
+                        )}
+                        <Button
+                          variant="secondary"
+                          className="mt-4 w-full"
+                          disabled={
+                            busy ||
+                            !Number(draft?.fee ?? application.processingFeeAmount ?? 0) ||
+                            !(draft?.qr || application.paymentQr)
+                          }
+                          onClick={() => void savePayment(application)}
+                        >
+                          {busy ? "Saving…" : "Save payment details"}
+                        </Button>
+
+                        {application.feePaidMarkedAt && !application.loanTransferredAt && (
+                          <p className="mt-4 rounded-md bg-amber-100 p-3 text-sm text-amber-800">
+                            Applicant marked the processing fee as paid on{" "}
+                            {new Date(application.feePaidMarkedAt).toLocaleString()}. Verify the
+                            payment, transfer the loan manually, then confirm below.
+                          </p>
+                        )}
+                        {application.loanTransferredAt ? (
+                          <p className="mt-4 flex items-center gap-2 text-sm font-medium text-success">
+                            <BadgeCheck className="h-4 w-4" /> Loan transferred on{" "}
+                            {new Date(application.loanTransferredAt).toLocaleString()}
+                          </p>
+                        ) : (
+                          <Button
+                            className="mt-4 w-full"
+                            disabled={busy || !application.disbursementStatus}
+                            onClick={() => void transferLoan(application)}
+                          >
+                            Mark loan as transferred
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </article>

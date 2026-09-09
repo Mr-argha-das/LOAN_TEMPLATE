@@ -41,6 +41,11 @@ export type ApplicationStatus = {
   disbursementStatus?: "processing";
   disbursementSubmittedAt?: string;
   bankAccountLast4?: string;
+  processingFeeAmount?: number;
+  paymentUpiId?: string;
+  paymentQrUrl?: string;
+  feePaidMarkedAt?: string;
+  loanTransferredAt?: string;
   id: string;
   status: "pending" | "approved";
   approvalTitle: string;
@@ -52,6 +57,7 @@ export type ApplicationStatus = {
 export type LoanApplication = LoanApplicationAnswers &
   ApplicationStatus & {
     bankDetails?: BankDetails;
+    paymentQr?: StoredDocument;
     panDocument: StoredDocument;
     aadhaarFrontDocument: StoredDocument;
     aadhaarBackDocument?: StoredDocument;
@@ -184,4 +190,38 @@ export function formatLoanAmount(amount: number) {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+export async function markProcessingFeePaid(id: string): Promise<ApplicationStatus> {
+  return readJson<ApplicationStatus>(
+    await fetch(`/api/applications/${encodeURIComponent(id)}/fee-paid`, { method: "POST" }),
+  );
+}
+
+export async function savePaymentDetails(
+  id: string,
+  processingFeeAmount: number,
+  paymentUpiId: string,
+  paymentQr: SelectedUpload | undefined,
+): Promise<LoanApplication> {
+  const body = new FormData();
+  body.set("processingFeeAmount", String(processingFeeAmount));
+  body.set("paymentUpiId", paymentUpiId.trim());
+  if (paymentQr) body.set("paymentQr", paymentQr.file, paymentQr.name);
+  const application = await readJson<LoanApplication>(
+    await fetch(`/api/admin/applications/${encodeURIComponent(id)}/payment`, {
+      method: "POST",
+      body,
+    }),
+  );
+  notifyApplicationsChanged();
+  return application;
+}
+
+export async function markLoanTransferred(id: string): Promise<LoanApplication> {
+  const application = await readJson<LoanApplication>(
+    await fetch(`/api/admin/applications/${encodeURIComponent(id)}/transfer`, { method: "POST" }),
+  );
+  notifyApplicationsChanged();
+  return application;
 }

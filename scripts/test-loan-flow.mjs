@@ -16,7 +16,12 @@ const { handleLoanApiRequest } = await import(
 for (const mode of ["local", "durable"]) {
   test(`${mode}: approval → bank details → persistent processing`, async () => {
     const database = new DatabaseSync(":memory:");
-    for (const migration of ["0000_cool_major_mapleleaf", "0001_icy_echo", "0002_nice_revanche"]) {
+    for (const migration of [
+      "0000_cool_major_mapleleaf",
+      "0001_icy_echo",
+      "0002_nice_revanche",
+      "0003_processing_fee",
+    ]) {
       database.exec(readFileSync(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"));
     }
     const files = new Map();
@@ -158,6 +163,37 @@ for (const mode of ["local", "durable"]) {
     const row = adminRows.find((entry) => entry.id === application.id);
     assert.equal(row.bankDetails.accountNumber, bank.accountNumber);
     assert.equal(row.bankDetails.ifsc, "SBIN0001234");
+    // Processing fee: QR must be configured before the applicant can confirm payment.
+    assert.equal((await request(`${path}/fee-paid`, { method: "POST" })).status, 409);
+    const paymentPath = `/api/admin/applications/${application.id}/payment`;
+    const payment = new FormData();
+    payment.set("processingFeeAmount", "2500");
+    payment.set("paymentUpiId", "chola@upi");
+    payment.set("paymentQr", new File(["qr"], "qr.png", { type: "image/png" }));
+    assert.equal((await request(paymentPath, { method: "POST", body: payment })).status, 401);
+    assert.equal(
+      (await request(paymentPath, { method: "POST", headers: { cookie }, body: payment })).status,
+      200,
+    );
+    const withQr = await (await request(path)).json();
+    assert.equal(withQr.processingFeeAmount, 2500);
+    assert.equal(withQr.paymentUpiId, "chola@upi");
+    assert.equal(withQr.paymentQrUrl, `/api/applications/${application.id}/payment-qr`);
+    assert.equal((await request(withQr.paymentQrUrl)).status, 200);
+
+    const feePaid = await (await request(`${path}/fee-paid`, { method: "POST" })).json();
+    assert.ok(feePaid.feePaidMarkedAt);
+    assert.equal(feePaid.loanTransferredAt, undefined);
+
+    const transferPath = `/api/admin/applications/${application.id}/transfer`;
+    assert.equal((await request(transferPath, { method: "POST" })).status, 401);
+    assert.equal(
+      (await request(transferPath, { method: "POST", headers: { cookie } })).status,
+      200,
+    );
+    const transferred = await (await request(path)).json();
+    assert.ok(transferred.loanTransferredAt);
+
     assert.equal(
       (await request("/api/applications/missing/disbursement", { method: "POST" })).status,
       404,

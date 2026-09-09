@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Award, Landmark, LoaderCircle } from "lucide-react";
+import { Award, BadgeCheck, Landmark, LoaderCircle, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   formatLoanAmount,
+  markProcessingFeePaid,
   submitBankDetails,
   type ApplicationStatus,
   type BankDetails,
@@ -27,8 +28,14 @@ export function LoanDisbursement({
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [feeError, setFeeError] = useState("");
   const processing = application.disbursementStatus === "processing";
-  const current = processing ? 2 : bankStep ? 1 : 0;
+  const transferred = Boolean(application.loanTransferredAt);
+  const feePaid = Boolean(application.feePaidMarkedAt);
+  const paymentReady = Boolean(application.paymentQrUrl && application.processingFeeAmount);
+  const feeStep = processing && paymentReady;
+  const current = transferred ? 3 : feeStep ? 2 : processing ? 2 : bankStep ? 1 : 0;
   const amount = application.approvedAmount
     ? formatLoanAmount(application.approvedAmount)
     : undefined;
@@ -59,13 +66,28 @@ export function LoanDisbursement({
     }
   }
 
+  async function confirmFeePaid() {
+    if (feeBusy) return;
+    setFeeBusy(true);
+    setFeeError("");
+    try {
+      onUpdate(await markProcessingFeePaid(application.id));
+    } catch (error) {
+      setFeeError(
+        error instanceof Error ? error.message : "Could not confirm payment. Please try again.",
+      );
+    } finally {
+      setFeeBusy(false);
+    }
+  }
+
   return (
     <section className="mt-4 rounded-md border border-primary/20 bg-card/80 p-5 shadow-sm backdrop-blur-sm">
       <ol
         aria-label="Disbursement progress"
-        className="mb-8 grid grid-cols-3 gap-2 text-center text-xs"
+        className="mb-8 grid grid-cols-4 gap-2 text-center text-xs"
       >
-        {["Amount Approved", "Disbursement", "Processing"].map((label, index) => (
+        {["Amount Approved", "Disbursement", "Processing Fee", "Transfer"].map((label, index) => (
           <li
             key={label}
             aria-current={current === index ? "step" : undefined}
@@ -80,7 +102,68 @@ export function LoanDisbursement({
           </li>
         ))}
       </ol>
-      {processing ? (
+      {transferred ? (
+        <div className="text-center" role="status">
+          <BadgeCheck className="mx-auto h-14 w-14 text-success" strokeWidth={1.5} />
+          <h2 className="mt-5 text-xl font-bold text-success">Loan Transferred</h2>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Your {amount} loan has been transferred to the bank account ending in{" "}
+            <strong>{application.bankAccountLast4}</strong>. It may take a few hours to reflect in
+            your account.
+          </p>
+        </div>
+      ) : feeStep ? (
+        <div className="text-center">
+          <QrCode className="mx-auto h-12 w-12 text-primary" />
+          <h2 className="mt-4 text-xl font-bold">Processing Fee Payment</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            To release your approved amount of <strong>{amount}</strong>, please pay the one-time
+            processing fee shown below.
+          </p>
+          <p className="mt-4 text-3xl font-bold text-primary">
+            {formatLoanAmount(application.processingFeeAmount!)}
+          </p>
+          <img
+            src={application.paymentQrUrl}
+            alt="Processing fee payment QR code"
+            className="mx-auto mt-5 h-64 w-64 rounded-md border border-border bg-white object-contain p-2"
+          />
+          {application.paymentUpiId && (
+            <p className="mt-3 break-all rounded-md bg-secondary px-3 py-2 text-sm">
+              UPI ID: <strong>{application.paymentUpiId}</strong>
+            </p>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Scan this QR with any UPI app and pay the exact amount. After payment, tap the button
+            below so our team can verify and transfer your loan.
+          </p>
+          {feePaid ? (
+            <div className="mt-6 rounded-md bg-secondary p-4 text-sm" role="status">
+              <LoaderCircle className="mx-auto h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
+              <p className="mt-3 font-semibold">Payment received confirmation submitted</p>
+              <p className="mt-1 text-muted-foreground">
+                Our team is verifying your payment. Your loan will be transferred to the account
+                ending in <strong>{application.bankAccountLast4}</strong> shortly.
+              </p>
+            </div>
+          ) : (
+            <>
+              {feeError && (
+                <p role="alert" className="mt-3 text-sm text-destructive">
+                  {feeError}
+                </p>
+              )}
+              <Button
+                disabled={feeBusy}
+                onClick={() => void confirmFeePaid()}
+                className="mt-6 h-12 w-full rounded-full"
+              >
+                {feeBusy ? "Confirming…" : "I have paid the processing fee"}
+              </Button>
+            </>
+          )}
+        </div>
+      ) : processing ? (
         <div className="text-center" role="status">
           <LoaderCircle className="mx-auto h-14 w-14 animate-spin text-primary motion-reduce:animate-none" />
           <h2 className="mt-5 text-xl font-bold">Disbursement Processing</h2>
@@ -92,7 +175,8 @@ export function LoanDisbursement({
             Bank account ending in <strong>{application.bankAccountLast4}</strong>
           </p>
           <p className="mt-3 text-xs text-muted-foreground">
-            This is not a transfer confirmation. Funds have not yet been confirmed as credited.
+            Payment instructions for the one-time processing fee will appear here shortly. This is
+            not a transfer confirmation.
           </p>
         </div>
       ) : bankStep ? (

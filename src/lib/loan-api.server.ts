@@ -42,6 +42,13 @@ type ApplicationRow = {
   approved_amount: number | null;
   bank_details_json: string | null;
   disbursement_submitted_at: string | null;
+  processing_fee_amount: number | null;
+  payment_upi_id: string | null;
+  payment_qr_key: string | null;
+  payment_qr_name: string | null;
+  payment_qr_type: string | null;
+  fee_paid_marked_at: string | null;
+  loan_transferred_at: string | null;
   id: string;
   answers_json: string;
   status: "pending" | "approved";
@@ -290,6 +297,13 @@ function publicStatus(row: ApplicationRow): ApplicationStatus {
           ),
         }
       : {}),
+    ...(row.processing_fee_amount ? { processingFeeAmount: row.processing_fee_amount } : {}),
+    ...(row.payment_upi_id ? { paymentUpiId: row.payment_upi_id } : {}),
+    ...(row.payment_qr_key
+      ? { paymentQrUrl: `/api/applications/${encodeURIComponent(row.id)}/payment-qr` }
+      : {}),
+    ...(row.fee_paid_marked_at ? { feePaidMarkedAt: row.fee_paid_marked_at } : {}),
+    ...(row.loan_transferred_at ? { loanTransferredAt: row.loan_transferred_at } : {}),
     ...(row.status === "approved" && row.approval_image_key
       ? { approvalImageUrl: `/api/applications/${encodeURIComponent(row.id)}/approval-image` }
       : {}),
@@ -334,6 +348,15 @@ function adminApplication(row: ApplicationRow): LoanApplication {
             row.aadhaar_back_document_name,
             row.aadhaar_back_document_type,
           ),
+        }
+      : {}),
+    ...(row.payment_qr_key && row.payment_qr_name && row.payment_qr_type
+      ? {
+          paymentQr: {
+            name: row.payment_qr_name,
+            type: row.payment_qr_type,
+            url: `/api/applications/${encodeURIComponent(row.id)}/payment-qr`,
+          },
         }
       : {}),
     ...(row.approval_image_key && row.approval_image_name && row.approval_image_type
@@ -426,6 +449,13 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     approved_amount: null,
     bank_details_json: null,
     disbursement_submitted_at: null,
+    processing_fee_amount: null,
+    payment_upi_id: null,
+    payment_qr_key: null,
+    payment_qr_name: null,
+    payment_qr_type: null,
+    fee_paid_marked_at: null,
+    loan_transferred_at: null,
     answers_json: JSON.stringify(answers),
     status: "pending",
     pan_document_key: panKey,
@@ -570,6 +600,104 @@ async function handleDisbursement(request: Request, env: RuntimeEnv, id: string)
   return json(publicStatus((await getApplication(mode, env, id))!));
 }
 
+async function updateRow(
+  mode: "durable" | "local",
+  env: RuntimeEnv,
+  row: ApplicationRow,
+  columns: Array<keyof ApplicationRow>,
+) {
+  if (mode === "local") {
+    const index = localApplications.findIndex((application) => application.id === row.id);
+    if (index >= 0) localApplications[index] = row;
+    return;
+  }
+  const assignments = columns.map((column) => `${String(column)} = ?`).join(", ");
+  await env
+    .DB!.prepare(`UPDATE loan_applications SET ${assignments} WHERE id = ?`)
+    .bind(...columns.map((column) => row[column]), row.id)
+    .run();
+}
+
+async function handlePaymentSetup(request: Request, env: RuntimeEnv, id: string) {
+  await requireAdmin(request, env);
+  const mode = requireStorage(request, env);
+  const existing = await getApplication(mode, env, id);
+  if (!existing) throw new HttpError(404, "Application not found.");
+  const form = await request.formData();
+  const fee = Number(form.get("processingFeeAmount"));
+  if (!Number.isSafeInteger(fee) || fee <= 0 || fee > 10_000_000) {
+    throw new HttpError(400, "Enter a valid processing fee amount.");
+  }
+  const upiValue = form.get("paymentUpiId");
+  const upiId = typeof upiValue === "string" ? upiValue.trim() : "";
+  if (upiId && !/^[\w.\-]{2,64}@[A-Za-z]{2,32}$/.test(upiId)) {
+    throw new HttpError(400, "Enter a valid UPI ID, such as name@bank.");
+  }
+  const qrValue = form.get("paymentQr");
+  let qrKey = existing.payment_qr_key;
+  let qrName = existing.payment_qr_name;
+  let qrType = existing.payment_qr_type;
+  if (qrValue instanceof File && qrValue.size > 0) {
+    const qr = requireUpload(qrValue, IMAGE_TYPES, "Payment QR image");
+    qrKey = `applications/${id}/payment-qr`;
+    qrName = qr.name;
+    qrType = qr.type;
+    await putFile(mode, env, qrKey, qr);
+  }
+  if (!qrKey || !qrName || !qrType) throw new HttpError(400, "Payment QR image is required.");
+
+  const updated: ApplicationRow = {
+    ...existing,
+    processing_fee_amount: fee,
+    payment_upi_id: upiId || null,
+    payment_qr_key: qrKey,
+    payment_qr_name: qrName,
+    payment_qr_type: qrType,
+  };
+  await updateRow(mode, env, updated, [
+    "processing_fee_amount",
+    "payment_upi_id",
+    "payment_qr_key",
+    "payment_qr_name",
+    "payment_qr_type",
+  ]);
+  return json(adminApplication(updated));
+}
+
+async function handleFeePaid(request: Request, env: RuntimeEnv, id: string) {
+  const mode = requireStorage(request, env);
+  const row = await getApplication(mode, env, id);
+  if (!row) throw new HttpError(404, "Application not found.");
+  if (!row.disbursement_submitted_at) {
+    throw new HttpError(409, "Submit your bank details before paying the processing fee.");
+  }
+  if (!row.payment_qr_key || !row.processing_fee_amount) {
+    throw new HttpError(409, "Payment details are not ready yet.");
+  }
+  if (!row.fee_paid_marked_at) {
+    const updated: ApplicationRow = { ...row, fee_paid_marked_at: new Date().toISOString() };
+    await updateRow(mode, env, updated, ["fee_paid_marked_at"]);
+    return json(publicStatus(updated));
+  }
+  return json(publicStatus(row));
+}
+
+async function handleTransfer(request: Request, env: RuntimeEnv, id: string) {
+  await requireAdmin(request, env);
+  const mode = requireStorage(request, env);
+  const row = await getApplication(mode, env, id);
+  if (!row) throw new HttpError(404, "Application not found.");
+  if (!row.disbursement_submitted_at) {
+    throw new HttpError(409, "Bank details are required before marking a transfer.");
+  }
+  const updated: ApplicationRow = {
+    ...row,
+    loan_transferred_at: row.loan_transferred_at ?? new Date().toISOString(),
+  };
+  await updateRow(mode, env, updated, ["loan_transferred_at"]);
+  return json(adminApplication(updated));
+}
+
 export async function handleLoanApiRequest(
   request: Request,
   envValue: unknown,
@@ -594,6 +722,21 @@ export async function handleLoanApiRequest(
     const disbursementMatch = url.pathname.match(/^\/api\/applications\/([^/]+)\/disbursement$/);
     if (request.method === "POST" && disbursementMatch?.[1]) {
       return await handleDisbursement(request, env, decodeURIComponent(disbursementMatch[1]));
+    }
+
+    const feePaidMatch = url.pathname.match(/^\/api\/applications\/([^/]+)\/fee-paid$/);
+    if (request.method === "POST" && feePaidMatch?.[1]) {
+      return await handleFeePaid(request, env, decodeURIComponent(feePaidMatch[1]));
+    }
+
+    const paymentSetupMatch = url.pathname.match(/^\/api\/admin\/applications\/([^/]+)\/payment$/);
+    if (request.method === "POST" && paymentSetupMatch?.[1]) {
+      return await handlePaymentSetup(request, env, decodeURIComponent(paymentSetupMatch[1]));
+    }
+
+    const transferMatch = url.pathname.match(/^\/api\/admin\/applications\/([^/]+)\/transfer$/);
+    if (request.method === "POST" && transferMatch?.[1]) {
+      return await handleTransfer(request, env, decodeURIComponent(transferMatch[1]));
     }
 
     const approvalMatch = url.pathname.match(/^\/api\/admin\/applications\/([^/]+)\/approve$/);
@@ -677,6 +820,16 @@ export async function handleLoanApiRequest(
         row.approval_image_type,
         row.approval_image_name,
       );
+    }
+
+    const paymentQrMatch = url.pathname.match(/^\/api\/applications\/([^/]+)\/payment-qr$/);
+    if (request.method === "GET" && paymentQrMatch?.[1]) {
+      const mode = requireStorage(request, env);
+      const row = await getApplication(mode, env, decodeURIComponent(paymentQrMatch[1]));
+      if (!row || !row.payment_qr_key || !row.payment_qr_type || !row.payment_qr_name) {
+        throw new HttpError(404, "Payment QR not found.");
+      }
+      return serveFile(mode, env, row.payment_qr_key, row.payment_qr_type, row.payment_qr_name);
     }
 
     const statusMatch = url.pathname.match(/^\/api\/applications\/([^/]+)$/);
