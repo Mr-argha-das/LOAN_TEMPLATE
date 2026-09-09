@@ -45,6 +45,7 @@ export type ApplicationStatus = {
   paymentUpiId?: string;
   paymentQrUrl?: string;
   feePaidMarkedAt?: string;
+  paymentTrnx?: string;
   loanTransferredAt?: string;
   id: string;
   status: "pending" | "approved";
@@ -192,9 +193,14 @@ export function formatLoanAmount(amount: number) {
   }).format(amount);
 }
 
-export async function markProcessingFeePaid(id: string): Promise<ApplicationStatus> {
+export async function markProcessingFeePaid(id: string, trnx?: string): Promise<ApplicationStatus> {
+  const body: { trnx?: string } = trnx ? { trnx } : {};
   return readJson<ApplicationStatus>(
-    await fetch(`/api/applications/${encodeURIComponent(id)}/fee-paid`, { method: "POST" }),
+    await fetch(`/api/applications/${encodeURIComponent(id)}/fee-paid`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   );
 }
 

@@ -30,6 +30,7 @@ export const loanApplications = sqliteTable(
     paymentQrType: text("payment_qr_type"),
     feePaidMarkedAt: text("fee_paid_marked_at"),
     loanTransferredAt: text("loan_transferred_at"),
+    paymentTrnx: text("payment_trnx"),
     approvalTitle: text("approval_title").notNull().default(""),
     approvalImageKey: text("approval_image_key"),
     approvalImageName: text("approval_image_name"),

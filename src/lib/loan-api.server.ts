@@ -48,6 +48,7 @@ type ApplicationRow = {
   payment_qr_name: string | null;
   payment_qr_type: string | null;
   fee_paid_marked_at: string | null;
+  payment_trnx: string | null;
   loan_transferred_at: string | null;
   id: string;
   answers_json: string;
@@ -303,6 +304,7 @@ function publicStatus(row: ApplicationRow): ApplicationStatus {
       ? { paymentQrUrl: `/api/applications/${encodeURIComponent(row.id)}/payment-qr` }
       : {}),
     ...(row.fee_paid_marked_at ? { feePaidMarkedAt: row.fee_paid_marked_at } : {}),
+    ...(row.payment_trnx ? { paymentTrnx: row.payment_trnx } : {}),
     ...(row.loan_transferred_at ? { loanTransferredAt: row.loan_transferred_at } : {}),
     ...(row.status === "approved" && row.approval_image_key
       ? { approvalImageUrl: `/api/applications/${encodeURIComponent(row.id)}/approval-image` }
@@ -455,6 +457,7 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     payment_qr_name: null,
     payment_qr_type: null,
     fee_paid_marked_at: null,
+    payment_trnx: null,
     loan_transferred_at: null,
     answers_json: JSON.stringify(answers),
     status: "pending",
@@ -674,12 +677,24 @@ async function handleFeePaid(request: Request, env: RuntimeEnv, id: string) {
   if (!row.payment_qr_key || !row.processing_fee_amount) {
     throw new HttpError(409, "Payment details are not ready yet.");
   }
+
+  const input = (await request.json().catch(() => ({}))) as { trnx?: unknown };
+  const trnxValue = typeof input?.trnx === "string" ? input.trnx.trim() : "";
+
+  let updated: ApplicationRow;
   if (!row.fee_paid_marked_at) {
-    const updated: ApplicationRow = { ...row, fee_paid_marked_at: new Date().toISOString() };
-    await updateRow(mode, env, updated, ["fee_paid_marked_at"]);
-    return json(publicStatus(updated));
+    updated = { ...row, fee_paid_marked_at: new Date().toISOString() };
+  } else {
+    updated = { ...row };
   }
-  return json(publicStatus(row));
+  if (trnxValue) {
+    updated.payment_trnx = trnxValue;
+  }
+  const columnsToUpdate: Array<keyof ApplicationRow> = [];
+  if (updated.fee_paid_marked_at !== row.fee_paid_marked_at) columnsToUpdate.push("fee_paid_marked_at");
+  if (updated.payment_trnx !== row.payment_trnx) columnsToUpdate.push("payment_trnx");
+  await updateRow(mode, env, updated, columnsToUpdate);
+  return json(publicStatus(updated));
 }
 
 async function handleTransfer(request: Request, env: RuntimeEnv, id: string) {

@@ -30,6 +30,8 @@ export function LoanDisbursement({
   const [error, setError] = useState("");
   const [feeBusy, setFeeBusy] = useState(false);
   const [feeError, setFeeError] = useState("");
+  const [trnx, setTrnx] = useState("");
+  const [viewApproval, setViewApproval] = useState(false);
   const processing = application.disbursementStatus === "processing";
   const transferred = Boolean(application.loanTransferredAt);
   const feePaid = Boolean(application.feePaidMarkedAt);
@@ -66,12 +68,12 @@ export function LoanDisbursement({
     }
   }
 
-  async function confirmFeePaid() {
+  async function confirmFeePaid(trnxValue?: string) {
     if (feeBusy) return;
     setFeeBusy(true);
     setFeeError("");
     try {
-      onUpdate(await markProcessingFeePaid(application.id));
+      onUpdate(await markProcessingFeePaid(application.id, trnxValue));
     } catch (error) {
       setFeeError(
         error instanceof Error ? error.message : "Could not confirm payment. Please try again.",
@@ -160,6 +162,26 @@ export function LoanDisbursement({
               >
                 {feeBusy ? "Confirming…" : "I have paid the processing fee"}
               </Button>
+              <div className="mt-4">
+                <label htmlFor="trnx-number" className="block text-sm font-medium">
+                  Transaction / UTR Number
+                </label>
+                <Input
+                  id="trnx-number"
+                  value={trnx}
+                  onChange={(e) => setTrnx(e.target.value)}
+                  placeholder="Enter payment UTR / transaction number"
+                  className="mt-2 bg-card"
+                />
+                <Button
+                  disabled={feeBusy || !trnx.trim()}
+                  onClick={() => void confirmFeePaid(trnx.trim())}
+                  className="mt-3 h-12 w-full rounded-full"
+                  variant="outline"
+                >
+                  {feeBusy ? "Submitting…" : "Submit Transaction"}
+                </Button>
+              </div>
             </>
           )}
         </div>
@@ -310,31 +332,47 @@ export function LoanDisbursement({
         <div className="text-center">
           <Award className="mx-auto h-14 w-14 text-success" strokeWidth={1.5} />
           <h2 className="mt-5 text-xl font-bold text-success">
-            {amount ? "Amount Approved" : "Application Approved"}
+            {amount ? "Application Approved" : "Application Approved"}
           </h2>
-          {amount && <p className="mt-3 text-4xl font-bold text-primary">{amount}</p>}
-          <p className="mt-3 text-sm text-muted-foreground">
-            {amount
-              ? `Congratulations! Your loan plan of ${amount} has been approved.`
-              : "Your application is approved. The approved amount will appear once confirmed by the admin."}
-          </p>
-          {application.approvalTitle && (
-            <p className="mt-4 text-sm font-semibold">{application.approvalTitle}</p>
+          {!viewApproval ? (
+            <>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Press the button below to see approval details.
+              </p>
+              <Button
+                className="mt-4 h-12 w-full rounded-full"
+                onClick={() => setViewApproval(true)}
+              >
+                View approval
+              </Button>
+            </>
+          ) : (
+            <>
+              {amount && <p className="mt-3 text-4xl font-bold text-primary">{amount}</p>}
+              <p className="mt-3 text-sm text-muted-foreground">
+                {amount
+                  ? `Congratulations! Your loan plan of ${amount} has been approved.`
+                  : "Your application is approved. The approved amount will appear once confirmed by the admin."}
+              </p>
+              {application.approvalTitle && (
+                <p className="mt-4 text-sm font-semibold">{application.approvalTitle}</p>
+              )}
+              {application.approvalImageUrl && (
+                <img
+                  src={application.approvalImageUrl}
+                  alt="Loan approval details"
+                  className="mt-4 max-h-60 w-full rounded-md object-contain"
+                />
+              )}
+              <Button
+                disabled={!amount}
+                className="mt-6 h-12 w-full rounded-full"
+                onClick={() => setBankStep(true)}
+              >
+                Continue to Disbursement
+              </Button>
+            </>
           )}
-          {application.approvalImageUrl && (
-            <img
-              src={application.approvalImageUrl}
-              alt="Loan approval details"
-              className="mt-4 max-h-60 w-full rounded-md object-contain"
-            />
-          )}
-          <Button
-            disabled={!amount}
-            className="mt-6 h-12 w-full rounded-full"
-            onClick={() => setBankStep(true)}
-          >
-            Continue to Disbursement
-          </Button>
         </div>
       )}
       <p className="mt-6 break-all rounded-md bg-secondary px-3 py-2 text-center text-xs text-muted-foreground">

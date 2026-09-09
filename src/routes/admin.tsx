@@ -397,6 +397,9 @@ function AdminPage() {
                           </p>
                           <p>Account: {application.bankDetails?.accountNumber}</p>
                           <p>IFSC: {application.bankDetails?.ifsc}</p>
+                          {application.paymentTrnx && (
+                            <p>Transaction / UTR: <strong>{application.paymentTrnx}</strong></p>
+                          )}
                         </div>
                       )}
                       <label className="mt-5 block text-sm font-medium">Approval title *</label>
