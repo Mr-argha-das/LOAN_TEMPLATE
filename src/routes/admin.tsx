@@ -92,6 +92,32 @@ function DocumentCard({ label, document }: { label: string; document: StoredDocu
   );
 }
 
+function FaceVideoCard({ document }: { document: StoredDocument }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-secondary/50">
+      <video
+        src={document.url}
+        controls
+        playsInline
+        preload="metadata"
+        className="h-36 w-full bg-black object-contain"
+      />
+      <div className="p-3">
+        <p className="text-sm font-semibold text-foreground">Face verification video</p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{document.name}</p>
+        <a
+          href={document.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1 block text-xs text-primary hover:underline"
+        >
+          Open in new tab
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function AdminPage() {
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [drafts, setDrafts] = useState<Record<string, ApprovalDraft>>({});
@@ -357,6 +383,25 @@ function AdminPage() {
                           />
                         )}
                       </div>
+
+                      <h3 className="mb-3 mt-7 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-primary">
+                        Face verification
+                        {application.faceVerifiedAt && (
+                          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-success">
+                            Recorded {new Date(application.faceVerifiedAt).toLocaleString("en-IN")}
+                          </span>
+                        )}
+                      </h3>
+                      {application.faceVideo ? (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                          <FaceVideoCard document={application.faceVideo} />
+                        </div>
+                      ) : (
+                        <p className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                          No liveness video — this application was submitted before face
+                          verification was introduced.
+                        </p>
+                      )}
                     </div>
 
                     <div className="rounded-lg bg-secondary/60 p-4">

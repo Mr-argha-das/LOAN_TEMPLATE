@@ -41,6 +41,23 @@ The homepage is a visual template inspired by cholamandalam.com. Imagery is
 AI-generated and the brand mark is redrawn as inline SVG — no assets are hot-linked
 from the live site.
 
+## Face verification (liveness capture)
+
+Step 6 of `/apply` — right after the PAN and Aadhaar uploads — records a guided
+liveness video. The applicant is prompted to look straight, then turn left,
+right, up and down (about 3 seconds each) while a single clip records through
+`getUserMedia` + `MediaRecorder`. They can review and retake it before
+continuing; the remaining questions and submission then run exactly as before.
+
+The clip is uploaded as `faceVideo` with the application and is **mandatory** —
+`POST /api/applications` rejects submissions without a valid video (webm/mp4,
+8 MB max). It is served only through the admin-authenticated route
+`/api/admin/applications/:id/files/face-video` and never exposed on the public
+status endpoint. Camera capture requires a secure context (HTTPS or localhost).
+
+Apply `drizzle/0004_face_verification.sql` before deploying this update.
+Applications created earlier keep working and simply show no video in admin.
+
 ## Approval and disbursement flow
 
 After submission, the existing admin review is retained. The admin sets an approved

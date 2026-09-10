@@ -21,6 +21,7 @@ for (const mode of ["local", "durable"]) {
       "0001_icy_echo",
       "0002_nice_revanche",
       "0003_processing_fee",
+      "0004_face_verification",
     ]) {
       database.exec(readFileSync(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"));
     }
@@ -87,11 +88,32 @@ for (const mode of ["local", "durable"]) {
     for (const key of ["panDocument", "aadhaarFrontDocument", "aadhaarBackDocument"]) {
       form.set(key, new File(["test document"], "test.png", { type: "image/png" }));
     }
+
+    // The liveness clip is mandatory, and only video types are accepted.
+    assert.equal(
+      (await request("/api/applications", { method: "POST", body: form })).status,
+      400,
+      "face video is required",
+    );
+    form.set("faceVideo", new File(["nope"], "face.png", { type: "image/png" }));
+    assert.equal(
+      (await request("/api/applications", { method: "POST", body: form })).status,
+      400,
+      "face video must be a video file",
+    );
+    form.set(
+      "faceVideo",
+      new File(["liveness clip"], "face-verification.webm", {
+        type: "video/webm;codecs=vp9,opus",
+      }),
+    );
+
     const created = await request("/api/applications", { method: "POST", body: form });
     assert.equal(created.status, 201);
     const application = await created.json();
     assert.equal(application.status, "pending");
     assert.equal(application.approvedAmount, undefined);
+    assert.ok(application.faceVerifiedAt, "face verification timestamp is recorded");
     const path = `/api/applications/${application.id}`;
     const bank = {
       accountHolder: "Test Applicant",
@@ -163,6 +185,17 @@ for (const mode of ["local", "durable"]) {
     const row = adminRows.find((entry) => entry.id === application.id);
     assert.equal(row.bankDetails.accountNumber, bank.accountNumber);
     assert.equal(row.bankDetails.ifsc, "SBIN0001234");
+    // The liveness clip is admin-only and must stream back through the file route.
+    assert.equal(row.faceVideo.url, `/api/admin/applications/${application.id}/files/face-video`);
+    assert.equal((await request(row.faceVideo.url)).status, 401, "face video requires admin auth");
+    const faceVideoResponse = await request(row.faceVideo.url, { headers: { cookie } });
+    assert.equal(faceVideoResponse.status, 200);
+    assert.match(faceVideoResponse.headers.get("content-type"), /^video\/webm/);
+    assert.equal(
+      (await (await request(path)).json()).faceVideo,
+      undefined,
+      "public status must not expose the liveness video",
+    );
     // Processing fee: QR must be configured before the applicant can confirm payment.
     assert.equal((await request(`${path}/fee-paid`, { method: "POST" })).status, 409);
     const paymentPath = `/api/admin/applications/${application.id}/payment`;

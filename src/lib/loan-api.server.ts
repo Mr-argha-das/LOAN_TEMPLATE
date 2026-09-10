@@ -64,6 +64,10 @@ type ApplicationRow = {
   aadhaar_back_document_key: string | null;
   aadhaar_back_document_name: string | null;
   aadhaar_back_document_type: string | null;
+  face_video_key: string | null;
+  face_video_name: string | null;
+  face_video_type: string | null;
+  face_verified_at: string | null;
   approval_title: string;
   approval_image_key: string | null;
   approval_image_name: string | null;
@@ -77,8 +81,17 @@ type LocalFile = { body: ArrayBuffer; type: string };
 const localApplications: ApplicationRow[] = [];
 const localFiles = new Map<string, LocalFile>();
 const MAX_UPLOAD_BYTES = 900_000;
+// The liveness clip is a short recording, so it gets a larger dedicated ceiling.
+const MAX_VIDEO_BYTES = 8_000_000;
 const DOCUMENT_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+// Browsers label MediaRecorder output with a codec suffix, so match on the base type.
+const VIDEO_BASE_TYPES = new Set([
+  "video/webm",
+  "video/mp4",
+  "video/x-matroska",
+  "video/quicktime",
+]);
 const ADMIN_COOKIE = "chola_admin_session";
 const LOCAL_ADMIN_PASSWORD = "admin123";
 
@@ -139,6 +152,20 @@ function requireUpload(value: FormDataEntryValue | null, types: Set<string>, lab
   if (!types.has(value.type)) throw new HttpError(400, `${label} file type is not supported.`);
   if (value.size > MAX_UPLOAD_BYTES) {
     throw new HttpError(400, `${label} must be 900 KB or less.`);
+  }
+  return value;
+}
+
+function requireVideoUpload(value: FormDataEntryValue | null, label: string) {
+  if (!(value instanceof File) || value.size === 0) {
+    throw new HttpError(400, `${label} is required.`);
+  }
+  const baseType = value.type.split(";")[0]!.trim().toLowerCase();
+  if (!VIDEO_BASE_TYPES.has(baseType)) {
+    throw new HttpError(400, `${label} file type is not supported.`);
+  }
+  if (value.size > MAX_VIDEO_BYTES) {
+    throw new HttpError(400, `${label} must be 8 MB or less.`);
   }
   return value;
 }
@@ -209,8 +236,9 @@ async function insertApplication(mode: "durable" | "local", env: RuntimeEnv, row
         aadhaar_document_key, aadhaar_document_name, aadhaar_document_type,
         aadhaar_front_document_key, aadhaar_front_document_name, aadhaar_front_document_type,
         aadhaar_back_document_key, aadhaar_back_document_name, aadhaar_back_document_type,
+        face_video_key, face_video_name, face_video_type, face_verified_at,
         approval_title, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -228,6 +256,10 @@ async function insertApplication(mode: "durable" | "local", env: RuntimeEnv, row
       row.aadhaar_back_document_key,
       row.aadhaar_back_document_name,
       row.aadhaar_back_document_type,
+      row.face_video_key,
+      row.face_video_name,
+      row.face_video_type,
+      row.face_verified_at,
       row.approval_title,
       row.created_at,
     )
@@ -302,6 +334,7 @@ function publicStatus(row: ApplicationRow): ApplicationStatus {
     ...(row.payment_qr_key
       ? { paymentQrUrl: `/api/applications/${encodeURIComponent(row.id)}/payment-qr` }
       : {}),
+    ...(row.face_verified_at ? { faceVerifiedAt: row.face_verified_at } : {}),
     ...(row.fee_paid_marked_at ? { feePaidMarkedAt: row.fee_paid_marked_at } : {}),
     ...(row.loan_transferred_at ? { loanTransferredAt: row.loan_transferred_at } : {}),
     ...(row.status === "approved" && row.approval_image_key
@@ -348,6 +381,15 @@ function adminApplication(row: ApplicationRow): LoanApplication {
             row.aadhaar_back_document_name,
             row.aadhaar_back_document_type,
           ),
+        }
+      : {}),
+    ...(row.face_video_key && row.face_video_name && row.face_video_type
+      ? {
+          faceVideo: {
+            name: row.face_video_name,
+            type: row.face_video_type,
+            url: `/api/admin/applications/${encodeURIComponent(row.id)}/files/face-video`,
+          },
         }
       : {}),
     ...(row.payment_qr_key && row.payment_qr_name && row.payment_qr_type
@@ -439,10 +481,12 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     DOCUMENT_TYPES,
     "Aadhaar back document",
   );
+  const faceVideo = requireVideoUpload(form.get("faceVideo"), "Face verification video");
   const id = crypto.randomUUID();
   const panKey = `applications/${id}/pan`;
   const aadhaarFrontKey = `applications/${id}/aadhaar-front`;
   const aadhaarBackKey = `applications/${id}/aadhaar-back`;
+  const faceVideoKey = `applications/${id}/face-video`;
   const createdAt = new Date().toISOString();
   const row: ApplicationRow = {
     id,
@@ -471,6 +515,10 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     aadhaar_back_document_key: aadhaarBackKey,
     aadhaar_back_document_name: aadhaarBack.name,
     aadhaar_back_document_type: aadhaarBack.type,
+    face_video_key: faceVideoKey,
+    face_video_name: faceVideo.name || "face-verification.webm",
+    face_video_type: faceVideo.type,
+    face_verified_at: createdAt,
     approval_title: "",
     approval_image_key: null,
     approval_image_name: null,
@@ -483,12 +531,14 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     await putFile(mode, env, panKey, pan);
     await putFile(mode, env, aadhaarFrontKey, aadhaarFront);
     await putFile(mode, env, aadhaarBackKey, aadhaarBack);
+    await putFile(mode, env, faceVideoKey, faceVideo);
     await insertApplication(mode, env, row);
   } catch (error) {
     await Promise.allSettled([
       deleteFile(mode, env, panKey),
       deleteFile(mode, env, aadhaarFrontKey),
       deleteFile(mode, env, aadhaarBackKey),
+      deleteFile(mode, env, faceVideoKey),
     ]);
     throw error;
   }
@@ -745,7 +795,7 @@ export async function handleLoanApiRequest(
     }
 
     const adminFileMatch = url.pathname.match(
-      /^\/api\/admin\/applications\/([^/]+)\/files\/(pan|aadhaar-front|aadhaar-back|approval)$/,
+      /^\/api\/admin\/applications\/([^/]+)\/files\/(pan|aadhaar-front|aadhaar-back|face-video|approval)$/,
     );
     if (request.method === "GET" && adminFileMatch?.[1] && adminFileMatch[2]) {
       await requireAdmin(request, env);
@@ -787,6 +837,12 @@ export async function handleLoanApiRequest(
           row.aadhaar_back_document_type,
           row.aadhaar_back_document_name,
         );
+      }
+      if (kind === "face-video") {
+        if (!row.face_video_key || !row.face_video_type || !row.face_video_name) {
+          throw new HttpError(404, "Face verification video not found.");
+        }
+        return serveFile(mode, env, row.face_video_key, row.face_video_type, row.face_video_name);
       }
       if (!row.approval_image_key || !row.approval_image_type || !row.approval_image_name) {
         throw new HttpError(404, "Approval image not found.");

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileCheck2, LoaderCircle, Upload } from "lucide-react";
+import { FileCheck2, LoaderCircle, ShieldCheck, Upload } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { SiteFooter } from "@/components/SiteFooter";
 import bannerImg from "@/assets/loan-banner.jpg";
@@ -14,10 +14,12 @@ import {
   getActiveLoanApplication,
   readUpload,
   type ApplicationStatus,
+  type FaceCapture,
   type LoanApplicationAnswers,
   type SelectedUpload,
 } from "@/lib/loan-applications";
 import { LoanDisbursement } from "@/components/LoanDisbursement";
+import { FaceVerification } from "@/components/FaceVerification";
 
 const PAN_PATTERN = /^[A-Z]{5}\d{4}[A-Z]$/;
 
@@ -70,7 +72,7 @@ const EMPTY: LoanApplicationAnswers = {
   netBanking: "",
 };
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 
 function OptionGrid({
   options,
@@ -108,6 +110,7 @@ function Index() {
   const [panDocument, setPanDocument] = useState<SelectedUpload>();
   const [aadhaarFrontDocument, setAadhaarFrontDocument] = useState<SelectedUpload>();
   const [aadhaarBackDocument, setAadhaarBackDocument] = useState<SelectedUpload>();
+  const [faceCapture, setFaceCapture] = useState<FaceCapture>();
   const [uploadError, setUploadError] = useState("");
   const [submissionError, setSubmissionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -148,7 +151,15 @@ function Index() {
   };
 
   const submitApplication = async (netBanking: string) => {
-    if (submitting || !panDocument || !aadhaarFrontDocument || !aadhaarBackDocument) return;
+    if (
+      submitting ||
+      !panDocument ||
+      !aadhaarFrontDocument ||
+      !aadhaarBackDocument ||
+      !faceCapture
+    ) {
+      return;
+    }
     const finalAnswers = { ...answers, netBanking };
     setAnswers(finalAnswers);
     setSubmitting(true);
@@ -160,6 +171,7 @@ function Index() {
           panDocument,
           aadhaarFrontDocument,
           aadhaarBackDocument,
+          faceCapture,
         ),
       );
     } catch (error) {
@@ -266,6 +278,12 @@ function Index() {
           </div>
         ) : (
           <div className="mt-4 rounded-md border border-border/60 bg-card/60 p-4 backdrop-blur-sm">
+            {faceCapture && step > 5 && (
+              <p className="mb-4 flex items-center justify-center gap-2 rounded-md bg-success/10 px-3 py-2 text-xs font-semibold text-success">
+                <ShieldCheck className="h-4 w-4" />
+                Face verification completed
+              </p>
+            )}
             {step === 0 && (
               <>
                 <h2 className="mb-5 text-center text-lg font-bold">
@@ -513,6 +531,16 @@ function Index() {
             )}
 
             {step === 5 && (
+              <FaceVerification
+                onBack={prev}
+                onVerified={(capture) => {
+                  setFaceCapture(capture);
+                  next();
+                }}
+              />
+            )}
+
+            {step === 6 && (
               <>
                 <h2 className="mb-5 text-center text-lg font-bold">Monthly Income Range</h2>
                 <OptionGrid
@@ -525,7 +553,7 @@ function Index() {
               </>
             )}
 
-            {step === 6 && (
+            {step === 7 && (
               <>
                 <h2 className="mb-5 text-center text-lg font-bold">Type of Sectors</h2>
                 <OptionGrid
@@ -538,7 +566,7 @@ function Index() {
               </>
             )}
 
-            {step === 7 && (
+            {step === 8 && (
               <>
                 <h2 className="mb-5 text-center text-lg font-bold">Have Net-Banking?</h2>
                 <OptionGrid
@@ -568,7 +596,8 @@ function Index() {
           </div>
         )}
 
-        {!application && step > 0 && (
+        {/* Step 5 renders its own back control so the camera can be released first. */}
+        {!application && step > 0 && step !== 5 && (
           <button
             type="button"
             disabled={submitting}

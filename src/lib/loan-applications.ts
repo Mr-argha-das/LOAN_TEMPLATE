@@ -37,6 +37,7 @@ export type BankDetails = {
 };
 
 export type ApplicationStatus = {
+  faceVerifiedAt?: string;
   approvedAmount?: number;
   disbursementStatus?: "processing";
   disbursementSubmittedAt?: string;
@@ -57,6 +58,7 @@ export type ApplicationStatus = {
 export type LoanApplication = LoanApplicationAnswers &
   ApplicationStatus & {
     bankDetails?: BankDetails;
+    faceVideo?: StoredDocument;
     paymentQr?: StoredDocument;
     panDocument: StoredDocument;
     aadhaarFrontDocument: StoredDocument;
@@ -67,8 +69,18 @@ export type LoanApplication = LoanApplicationAnswers &
 const ACTIVE_APPLICATION_KEY = "chola-active-application-v2";
 export const APPLICATIONS_CHANGED_EVENT = "chola-applications-changed";
 export const MAX_UPLOAD_BYTES = 900_000;
+export const MAX_VIDEO_BYTES = 8_000_000;
 export const ACCEPTED_DOCUMENT_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/** A liveness clip captured in the browser via MediaRecorder. */
+export type FaceCapture = {
+  blob: Blob;
+  type: string;
+  size: number;
+  durationSeconds: number;
+  previewUrl: string;
+};
 
 function notifyApplicationsChanged() {
   if (typeof window !== "undefined") {
@@ -87,12 +99,14 @@ export async function createLoanApplication(
   panDocument: SelectedUpload,
   aadhaarFrontDocument: SelectedUpload,
   aadhaarBackDocument: SelectedUpload,
+  faceCapture: FaceCapture,
 ): Promise<ApplicationStatus> {
   const body = new FormData();
   body.set("answers", JSON.stringify(answers));
   body.set("panDocument", panDocument.file, panDocument.name);
   body.set("aadhaarFrontDocument", aadhaarFrontDocument.file, aadhaarFrontDocument.name);
   body.set("aadhaarBackDocument", aadhaarBackDocument.file, aadhaarBackDocument.name);
+  body.set("faceVideo", faceCapture.blob, faceVideoFileName(faceCapture.type));
 
   const application = await readJson<ApplicationStatus>(
     await fetch("/api/applications", { method: "POST", body }),
@@ -153,6 +167,14 @@ export function clearActiveLoanApplication() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ACTIVE_APPLICATION_KEY);
   notifyApplicationsChanged();
+}
+
+export function faceVideoFileName(mimeType: string) {
+  const base = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (base === "video/mp4") return "face-verification.mp4";
+  if (base === "video/quicktime") return "face-verification.mov";
+  if (base === "video/x-matroska") return "face-verification.mkv";
+  return "face-verification.webm";
 }
 
 export function readUpload(file: File, acceptedTypes: string[]): SelectedUpload {
