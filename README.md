@@ -30,12 +30,12 @@ npm run dev
 
 ## Pages
 
-| Route | Purpose |
-| --- | --- |
-| `/` | Cholamandalam-style corporate homepage (hero carousel, product grid, EMI calculator, call-back form). Every **Apply Now** button leads to `/apply`. |
-| `/apply` | The multi-step CSEL loan application (previously served at `/`). |
-| `/admin` | Admin review, approval and disbursement console. |
-| `/loans`, `/eligibility`, `/faq`, `/about`, `/contact` | Supporting content pages. |
+| Route                                                  | Purpose                                                                                                                                             |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                                                    | Cholamandalam-style corporate homepage (hero carousel, product grid, EMI calculator, call-back form). Every **Apply Now** button leads to `/apply`. |
+| `/apply`                                               | The multi-step CSEL loan application (previously served at `/`).                                                                                    |
+| `/admin`                                               | Admin review, approval and disbursement console.                                                                                                    |
+| `/loans`, `/eligibility`, `/faq`, `/about`, `/contact` | Supporting content pages.                                                                                                                           |
 
 The homepage is a visual template inspired by cholamandalam.com. Imagery is
 AI-generated and the brand mark is redrawn as inline SVG — no assets are hot-linked
@@ -124,7 +124,7 @@ The Node build stores everything on disk: `DATA_DIR/loan.db` (SQLite) and
 
 ```sh
 cd /var/www/html/LOAN_TEMPLATE
-git pull origin arena/01a0856a-loan-template
+git pull origin arena/01a08aa9-loan-template
 npm install
 npm run build:node
 
@@ -155,7 +155,7 @@ server {
     listen 80;
     server_name your-domain.com;
 
-    client_max_body_size 2m;   # uploads are capped at 900 KB each
+    client_max_body_size 12m;  # KYC docs are 900 KB each; the face video is up to 8 MB
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -173,14 +173,33 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d your-domain.com    # HTTPS, required for secure admin cookies
 ```
 
-Updating later:
+Updating later — one command does the backup, pull, build and restart:
 
 ```sh
-git pull origin arena/01a0856a-loan-template
+cd /var/www/html/LOAN_TEMPLATE
+bash scripts/deploy-vps.sh
+```
+
+Or manually:
+
+```sh
+git pull origin arena/01a08aa9-loan-template
 npm install
 npm run build:node
-pm2 restart loan-app
+pm2 restart loan-app --update-env
 ```
+
+Migrations in `drizzle/` are applied automatically on boot, so upgrading an
+existing server needs no migration step — existing rows keep their data and the
+new columns are simply added as empty.
+
+Two things the face verification step needs on a server:
+
+- `client_max_body_size 12m;` in nginx, otherwise the video upload fails with
+  `413 Request Entity Too Large`.
+- **HTTPS.** Browsers only expose the camera on a secure origin, so the capture
+  screen will not work over plain `http://SERVER_IP:8080`. Run certbot on a
+  domain first.
 
 Requires Node 22+ (uses the built-in `node:sqlite` module). Back up `DATA_DIR`
 regularly — it holds every application, document and bank detail.
