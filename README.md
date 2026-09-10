@@ -28,6 +28,19 @@ npm run dev
 - React
 - Tailwind CSS
 
+## Pages
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Cholamandalam-style corporate homepage (hero carousel, product grid, EMI calculator, call-back form). Every **Apply Now** button leads to `/apply`. |
+| `/apply` | The multi-step CSEL loan application (previously served at `/`). |
+| `/admin` | Admin review, approval and disbursement console. |
+| `/loans`, `/eligibility`, `/faq`, `/about`, `/contact` | Supporting content pages. |
+
+The homepage is a visual template inspired by cholamandalam.com. Imagery is
+AI-generated and the brand mark is redrawn as inline SVG — no assets are hot-linked
+from the live site.
+
 ## Approval and disbursement flow
 
 After submission, the existing admin review is retained. The admin sets an approved

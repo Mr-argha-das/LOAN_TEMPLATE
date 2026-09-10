@@ -1,603 +1,676 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { CholaHeader } from "@/components/CholaHeader";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { FileCheck2, LoaderCircle, Upload } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import { SiteFooter } from "@/components/SiteFooter";
-import bannerImg from "@/assets/loan-banner.jpg";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ACCEPTED_DOCUMENT_TYPES,
-  APPLICATIONS_CHANGED_EVENT,
-  createLoanApplication,
-  getActiveLoanApplication,
-  readUpload,
-  type ApplicationStatus,
-  type LoanApplicationAnswers,
-  type SelectedUpload,
-} from "@/lib/loan-applications";
-import { LoanDisbursement } from "@/components/LoanDisbursement";
-
-const PAN_PATTERN = /^[A-Z]{5}\d{4}[A-Z]$/;
+  AlertTriangle,
+  ArrowRight,
+  Banknote,
+  Bike,
+  Building2,
+  Car,
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  CreditCard,
+  FileText,
+  Handshake,
+  Headphones,
+  Home,
+  Landmark,
+  MapPin,
+  MessageSquareWarning,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  Timer,
+  Tractor,
+  Truck,
+  Wallet,
+} from "lucide-react";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
+import heroGold from "@/assets/hero-gold.jpg";
+import heroCar from "@/assets/hero-car.jpg";
+import heroPersonal from "@/assets/hero-personal.jpg";
+import heroTruck from "@/assets/hero-truck.jpg";
+import prodGold from "@/assets/prod-gold.jpg";
+import prodTwoWheeler from "@/assets/prod-twowheeler.jpg";
+import prodHome from "@/assets/prod-home.jpg";
+import prodSme from "@/assets/prod-sme.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "CSEL Loan Application | Quick Loan Processing" },
+      {
+        title:
+          "Cholamandalam — Loans for Car, Commercial Vehicle, Home, Loan against Property, Bike, Personal, Business",
+      },
       {
         name: "description",
         content:
-          "Apply for a CSEL personal, professional or business loan online. Quick loan processing with minimum documentation.",
+          "Chola offers vehicle loans, home loans, gold loans, loan against property, SME and personal loans with quick approval and minimum documentation. Apply online today.",
       },
-      { property: "og:title", content: "CSEL Loan Application | Quick Loan Processing" },
+      {
+        property: "og:title",
+        content: "Cholamandalam — Enter a better life",
+      },
       {
         property: "og:description",
         content:
-          "Apply for a CSEL personal, professional or business loan online. Quick loan processing with minimum documentation.",
+          "Apply online for car, two wheeler, commercial vehicle, home, gold, SME and personal loans from Chola.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Index,
+  component: HomePage,
 });
 
-const STATES: Record<string, string[]> = {
-  Rajasthan: ["Jaipur", "Jodhpur", "Udaipur", "Kota", "Ajmer"],
-  Maharashtra: ["Mumbai", "Pune", "Nagpur", "Nashik"],
-  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Salem"],
-  Karnataka: ["Bengaluru", "Mysuru", "Mangaluru"],
-  Delhi: ["New Delhi", "Dwarka", "Rohini"],
-  Gujarat: ["Ahmedabad", "Surat", "Vadodara", "Rajkot"],
-  "Uttar Pradesh": ["Lucknow", "Kanpur", "Noida", "Varanasi"],
-};
+const SLIDES = [
+  {
+    image: heroGold,
+    eyebrow: "Chola Gold Loan",
+    title: "Shift from holding your dreams to unlocking your success!",
+    tone: "from-[#fbf1d8] via-[#fbf1d8]/85 to-transparent",
+    dark: false,
+  },
+  {
+    image: heroCar,
+    eyebrow: "Chola New & Used Car Loans",
+    title: "Switch from renting a car to OWNING a car!",
+    tone: "from-[#d9ecfb] via-[#d9ecfb]/85 to-transparent",
+    dark: false,
+  },
+  {
+    image: heroPersonal,
+    eyebrow: "Chola Consumer & Small Enterprise Loans",
+    title: "Switch from long waits to INSTANT Personal Loans!",
+    tone: "from-[#16305c] via-[#16305c]/85 to-transparent",
+    dark: true,
+  },
+  {
+    image: heroTruck,
+    eyebrow: "Chola Commercial Vehicle Loans",
+    title: "Switch from being a driver to an OWNER!",
+    tone: "from-[#12275a] via-[#12275a]/85 to-transparent",
+    dark: true,
+  },
+];
 
-const EMPTY: LoanApplicationAnswers = {
-  loanType: "",
-  occupation: "",
-  company: "",
-  firstName: "",
-  lastName: "",
-  state: "",
-  city: "",
-  pincode: "",
-  gender: "",
-  dob: "",
-  pan: "",
-  income: "",
-  sector: "",
-  netBanking: "",
-};
+const QUICK_ACTIONS = [
+  { Icon: Wallet, top: "Our Products", bottom: "& Services" },
+  { Icon: FileText, top: "Apply", bottom: "Loan Online", primary: true },
+  { Icon: CreditCard, top: "Pay EMI", bottom: "Online" },
+  { Icon: Headphones, top: "Request", bottom: "a Call Back" },
+  { Icon: MapPin, top: "Find", bottom: "Nearest Branch" },
+  { Icon: MessageSquareWarning, top: "Share Your", bottom: "Grievance" },
+];
 
-const TOTAL_STEPS = 8;
+const PRODUCT_CARDS = [
+  { title: "Gold Loan", image: prodGold },
+  { title: "Car Loans", image: heroCar },
+  { title: "Two Wheeler Loans", image: prodTwoWheeler },
+  { title: "Consumer & Small Enterprise Loans", image: heroPersonal },
+  { title: "Commercial Vehicle Loans", image: heroTruck },
+  { title: "Home & Shop Loans", image: prodHome },
+  { title: "SME Loans", image: prodSme },
+  { title: "Loan Against Property", image: prodHome },
+];
 
-function OptionGrid({
-  options,
-  onSelect,
-  disabled = false,
-}: {
-  disabled?: boolean;
-  options: string[];
-  onSelect: (value: string) => void;
-}) {
+const APPLY_TILES = [
+  { title: "Gold Loan", Icon: Coins },
+  { title: "Car & MUV - Loans", Icon: Car },
+  { title: "Two Wheeler Loans", Icon: Bike },
+  { title: "Commercial Vehicle Loans", Icon: Truck },
+  { title: "Three Wheeler Loans", Icon: Bike },
+  { title: "Construction Equipment Loans", Icon: Building2 },
+  { title: "Tractor & Farm Equipment Loans", Icon: Tractor },
+  { title: "Secured Business Loans", Icon: Handshake },
+  { title: "Home Loans", Icon: Home },
+  { title: "Loan Against Property", Icon: Landmark },
+  { title: "Consumer & Small Enterprise Loans", Icon: Wallet },
+  { title: "SME Loans", Icon: Banknote },
+];
+
+const STATS = [
+  { value: "1,900+", label: "Branches across India" },
+  { value: "₹1.9 Lakh Cr", label: "Assets under management" },
+  { value: "45+ Years", label: "Of trusted lending" },
+  { value: "38 Lakh+", label: "Happy customers" },
+];
+
+const WHY_CHOLA = [
+  {
+    Icon: Timer,
+    title: "Quick Loan Processing",
+    body: "In-principle decisions in minutes with a fully digital application journey.",
+  },
+  {
+    Icon: FileText,
+    title: "Minimum Documentation",
+    body: "PAN, Aadhaar and basic income proof are all we need to get started.",
+  },
+  {
+    Icon: ShieldCheck,
+    title: "Transparent Pricing",
+    body: "Clear interest rates and charges disclosed upfront — no hidden costs.",
+  },
+  {
+    Icon: Sparkles,
+    title: "Pan-India Presence",
+    body: "A branch network that reaches metros, small towns and rural India alike.",
+  },
+];
+
+function HeroCarousel() {
+  const [index, setIndex] = useState(0);
+  const timer = useRef<number | undefined>(undefined);
+
+  const go = useCallback((next: number) => {
+    setIndex((current) => (next + SLIDES.length) % SLIDES.length);
+  }, []);
+
+  useEffect(() => {
+    timer.current = window.setInterval(() => {
+      setIndex((current) => (current + 1) % SLIDES.length);
+    }, 5500);
+    return () => window.clearInterval(timer.current);
+  }, []);
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {options.map((option) => (
-        <button
-          key={option}
-          type="button"
-          disabled={disabled}
-          onClick={() => onSelect(option)}
-          className="rounded-md border border-primary/40 bg-card px-3 py-4 text-sm text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+    <section className="relative overflow-hidden bg-secondary">
+      <div className="relative h-[300px] sm:h-[380px] lg:h-[470px]">
+        {SLIDES.map((slide, slideIndex) => (
+          <div
+            key={slide.title}
+            className={`absolute inset-0 transition-opacity duration-700 ${
+              slideIndex === index ? "opacity-100" : "pointer-events-none opacity-0"
+            }`}
+          >
+            <img
+              src={slide.image}
+              alt={slide.eyebrow}
+              className="h-full w-full object-cover object-right"
+              loading={slideIndex === 0 ? "eager" : "lazy"}
+            />
+            <div className={`absolute inset-0 bg-gradient-to-r ${slide.tone}`} />
+            <div className="absolute inset-0">
+              <div className="mx-auto flex h-full max-w-[1280px] items-center px-5">
+                <div className="max-w-[300px] sm:max-w-[420px] lg:max-w-[520px]">
+                  {slideIndex === index && (
+                    <div className="chola-fade-up">
+                      <h2
+                        className={`text-[22px] font-bold leading-tight sm:text-[30px] lg:text-[38px] ${
+                          slide.dark ? "text-white" : "text-chola-blue-dark"
+                        }`}
+                      >
+                        {slide.title}
+                      </h2>
+                      <p
+                        className={`mt-2 text-[13px] font-semibold sm:mt-3 sm:text-[16px] ${
+                          slide.dark ? "text-white/85" : "text-chola-red"
+                        }`}
+                      >
+                        {slide.eyebrow}
+                      </p>
+                      <Link
+                        to="/apply"
+                        className={`mt-4 inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-bold uppercase tracking-wide shadow-lg transition-transform hover:scale-105 sm:mt-6 sm:text-sm ${
+                          slide.dark ? "bg-chola-red text-white" : "bg-chola-blue text-white"
+                        }`}
+                      >
+                        Know More
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        aria-label="Previous slide"
+        onClick={() => go(index - 1)}
+        className="absolute left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-chola-blue shadow-md transition-colors hover:bg-white sm:left-4 sm:h-11 sm:w-11"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      <button
+        type="button"
+        aria-label="Next slide"
+        onClick={() => go(index + 1)}
+        className="absolute right-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-chola-blue shadow-md transition-colors hover:bg-white sm:right-4 sm:h-11 sm:w-11"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+
+      <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+        {SLIDES.map((slide, slideIndex) => (
+          <button
+            key={slide.title}
+            type="button"
+            aria-label={`Go to slide ${slideIndex + 1}`}
+            onClick={() => setIndex(slideIndex)}
+            className={`h-2 rounded-full transition-all ${
+              slideIndex === index ? "w-7 bg-chola-red" : "w-2 bg-chola-blue/40"
+            }`}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EmiCalculator() {
+  const [amount, setAmount] = useState(500000);
+  const [rate, setRate] = useState(11.5);
+  const [months, setMonths] = useState(48);
+
+  const { emi, interest, total } = useMemo(() => {
+    const monthlyRate = rate / 12 / 100;
+    const factor = Math.pow(1 + monthlyRate, months);
+    const value = (amount * monthlyRate * factor) / (factor - 1);
+    const totalPayable = value * months;
+    return {
+      emi: Math.round(value),
+      interest: Math.round(totalPayable - amount),
+      total: Math.round(totalPayable),
+    };
+  }, [amount, rate, months]);
+
+  const inr = (value: number) => `₹${value.toLocaleString("en-IN")}`;
+
+  return (
+    <div className="grid gap-8 rounded-xl border border-border bg-white p-6 shadow-sm lg:grid-cols-[1.3fr_1fr] lg:p-8">
+      <div className="space-y-6">
+        <div>
+          <div className="flex items-center justify-between text-sm font-semibold text-chola-grey">
+            <label htmlFor="emi-amount">Loan Amount</label>
+            <span className="text-chola-blue">{inr(amount)}</span>
+          </div>
+          <input
+            id="emi-amount"
+            type="range"
+            min={50000}
+            max={5000000}
+            step={10000}
+            value={amount}
+            onChange={(event) => setAmount(Number(event.target.value))}
+            className="mt-3 w-full accent-[var(--chola-red)]"
+          />
+        </div>
+        <div>
+          <div className="flex items-center justify-between text-sm font-semibold text-chola-grey">
+            <label htmlFor="emi-rate">Interest Rate (p.a.)</label>
+            <span className="text-chola-blue">{rate.toFixed(2)}%</span>
+          </div>
+          <input
+            id="emi-rate"
+            type="range"
+            min={8}
+            max={24}
+            step={0.25}
+            value={rate}
+            onChange={(event) => setRate(Number(event.target.value))}
+            className="mt-3 w-full accent-[var(--chola-red)]"
+          />
+        </div>
+        <div>
+          <div className="flex items-center justify-between text-sm font-semibold text-chola-grey">
+            <label htmlFor="emi-tenure">Tenure</label>
+            <span className="text-chola-blue">{months} months</span>
+          </div>
+          <input
+            id="emi-tenure"
+            type="range"
+            min={6}
+            max={84}
+            step={6}
+            value={months}
+            onChange={(event) => setMonths(Number(event.target.value))}
+            className="mt-3 w-full accent-[var(--chola-red)]"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col justify-center rounded-lg bg-chola-blue-dark p-6 text-center text-white">
+        <p className="text-[12px] uppercase tracking-widest text-white/70">Your monthly EMI</p>
+        <p className="mt-1 text-4xl font-bold">{inr(emi)}</p>
+        <dl className="mt-6 space-y-2 text-left text-[13px]">
+          <div className="flex justify-between border-b border-white/15 pb-2">
+            <dt className="text-white/70">Principal</dt>
+            <dd className="font-semibold">{inr(amount)}</dd>
+          </div>
+          <div className="flex justify-between border-b border-white/15 pb-2">
+            <dt className="text-white/70">Total interest</dt>
+            <dd className="font-semibold">{inr(interest)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-white/70">Total payable</dt>
+            <dd className="font-semibold">{inr(total)}</dd>
+          </div>
+        </dl>
+        <Link
+          to="/apply"
+          className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-chola-red px-6 py-3 text-[13px] font-bold uppercase tracking-wide text-white transition-transform hover:scale-105"
         >
-          {option}
-        </button>
-      ))}
+          Apply Now
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
     </div>
   );
 }
 
-function selectClass() {
-  return "h-12 w-full rounded-md border border-input bg-secondary px-3 text-sm text-foreground outline-none focus:border-primary";
+function SectionHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-8 text-center">
+      <h2 className="text-[22px] font-bold text-chola-blue-dark sm:text-[28px]">{title}</h2>
+      <span className="mx-auto mt-3 block h-[3px] w-16 bg-chola-red" />
+      {subtitle && <p className="mx-auto mt-3 max-w-2xl text-[14px] text-chola-grey">{subtitle}</p>}
+    </div>
+  );
 }
 
-function Index() {
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<LoanApplicationAnswers>(EMPTY);
-  const [panDocument, setPanDocument] = useState<SelectedUpload>();
-  const [aadhaarFrontDocument, setAadhaarFrontDocument] = useState<SelectedUpload>();
-  const [aadhaarBackDocument, setAadhaarBackDocument] = useState<SelectedUpload>();
-  const [uploadError, setUploadError] = useState("");
-  const [submissionError, setSubmissionError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [application, setApplication] = useState<ApplicationStatus>();
-
-  const set = (patch: Partial<LoanApplicationAnswers>) => setAnswers((a) => ({ ...a, ...patch }));
-  const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
-  const prev = () => setStep((s) => Math.max(s - 1, 0));
-
-  useEffect(() => {
-    const refreshApplication = () => {
-      void getActiveLoanApplication()
-        .then(setApplication)
-        .catch(() => undefined);
-    };
-    refreshApplication();
-    window.addEventListener("storage", refreshApplication);
-    window.addEventListener(APPLICATIONS_CHANGED_EVENT, refreshApplication);
-    const timer = window.setInterval(refreshApplication, 2_000);
-    return () => {
-      window.removeEventListener("storage", refreshApplication);
-      window.removeEventListener(APPLICATIONS_CHANGED_EVENT, refreshApplication);
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const selectDocument = (
-    file: File | undefined,
-    onSuccess: (document: SelectedUpload) => void,
-  ) => {
-    if (!file) return;
-    try {
-      setUploadError("");
-      onSuccess(readUpload(file, ACCEPTED_DOCUMENT_TYPES));
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "File upload failed.");
-    }
-  };
-
-  const submitApplication = async (netBanking: string) => {
-    if (submitting || !panDocument || !aadhaarFrontDocument || !aadhaarBackDocument) return;
-    const finalAnswers = { ...answers, netBanking };
-    setAnswers(finalAnswers);
-    setSubmitting(true);
-    setSubmissionError("");
-    try {
-      setApplication(
-        await createLoanApplication(
-          finalAnswers,
-          panDocument,
-          aadhaarFrontDocument,
-          aadhaarBackDocument,
-        ),
-      );
-    } catch (error) {
-      setSubmissionError(
-        error instanceof Error
-          ? error.message
-          : "The application could not be submitted. Please try again.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const age = useMemo(() => {
-    if (!answers.dob) return "";
-    const d = new Date(answers.dob);
-    if (Number.isNaN(d.getTime())) return "";
-    const now = new Date();
-    let a = now.getFullYear() - d.getFullYear();
-    const m = now.getMonth() - d.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-    return a >= 0 ? String(a) : "";
-  }, [answers.dob]);
-
-  const panValid = PAN_PATTERN.test(answers.pan.trim());
-
-  const contactValid =
-    answers.firstName.trim() &&
-    answers.lastName.trim() &&
-    answers.state &&
-    answers.city &&
-    answers.pincode.length === 6 &&
-    answers.gender &&
-    answers.dob &&
-    panValid;
-
-  const progress = application ? 100 : ((step + 1) / TOTAL_STEPS) * 100;
+function HomePage() {
+  const [callbackType, setCallbackType] = useState<"existing" | "new">("existing");
+  const [callbackSent, setCallbackSent] = useState(false);
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ backgroundImage: "var(--page-gradient)", backgroundAttachment: "fixed" }}
-    >
-      <CholaHeader />
+    <div className="min-h-screen bg-white">
+      <SiteHeader />
+      <HeroCarousel />
 
-      <main className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-        <h1 className="text-center text-3xl font-bold text-foreground">CSEL Loan</h1>
-        <div className="mx-auto mt-2 h-[3px] w-24 bg-brand-red" />
-
-        <section className="relative mt-6 overflow-hidden rounded-sm bg-secondary">
-          <img
-            src={bannerImg}
-            alt="Loan advisor with laptop"
-            width={1200}
-            height={560}
-            className="absolute right-0 top-0 h-full w-1/2 object-cover object-right"
-          />
-          <ul className="relative space-y-2 py-5 pl-4">
-            <li className="border-l-2 border-brand-red pl-2 text-sm text-foreground">
-              Quick Loan Processing
-            </li>
-            <li className="border-l-2 border-brand-red pl-2 text-sm text-foreground">
-              Minimum Documentation
-            </li>
-          </ul>
-        </section>
-
-        <div className="mt-6 h-[6px] w-full rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-500"
-            style={{ width: `${Math.max(progress, 8)}%` }}
-          />
+      {/* Fraud alert marquee */}
+      <div className="overflow-hidden bg-chola-red py-2 text-white">
+        <div className="flex w-max chola-marquee">
+          {[0, 1].map((copy) => (
+            <span key={copy} className="flex items-center gap-2 whitespace-nowrap px-6 text-[13px]">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Beware of Frauds! Chola never asks you to pay cash or transfer money to the bank
+              accounts of any 3rd party for providing loans or jobs. Click here to know More
+              &gt;&gt;
+            </span>
+          ))}
         </div>
+      </div>
 
-        {application?.status === "approved" ? (
-          <LoanDisbursement
-            key={application.id}
-            application={application}
-            onUpdate={setApplication}
-          />
-        ) : application ? (
-          <div className="mt-4 rounded-md border border-primary/20 bg-card/80 px-5 py-10 text-center shadow-sm backdrop-blur-sm">
-            <>
-              <LoaderCircle className="mx-auto h-14 w-14 animate-spin text-primary" />
-              <h2 className="mt-5 text-xl font-bold text-foreground">Approval pending</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Your application has been submitted and is awaiting review. Your approved amount
-                will appear here once confirmed.
-              </p>
-              <p className="mt-5 rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
-                Application ID: {application.id}
-              </p>
-            </>
+      {/* Quick actions */}
+      <section className="border-b border-border bg-white">
+        <div className="mx-auto max-w-[1280px] px-5 py-6">
+          <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
+            {QUICK_ACTIONS.map(({ Icon, top, bottom, primary }) => (
+              <Link
+                key={top + bottom}
+                to="/apply"
+                className={`group flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-all hover:-translate-y-1 hover:shadow-lg ${
+                  primary
+                    ? "border-chola-red bg-chola-red/5"
+                    : "border-border bg-white hover:border-chola-blue/40"
+                }`}
+              >
+                <span
+                  className={`flex h-11 w-11 items-center justify-center rounded-full ${
+                    primary ? "bg-chola-red text-white" : "bg-secondary text-chola-blue"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="text-[12px] leading-tight text-chola-grey sm:text-[13px]">
+                  <span className="block font-bold text-chola-blue-dark">{top}</span>
+                  {bottom}
+                </span>
+              </Link>
+            ))}
           </div>
-        ) : (
-          <div className="mt-4 rounded-md border border-border/60 bg-card/60 p-4 backdrop-blur-sm">
-            {step === 0 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">
-                  What type of Loan You Looking for?
-                </h2>
-                <OptionGrid
-                  options={[
-                    "Personal Loans",
-                    "Professional Loans(Doctors,CAs)",
-                    "Business Loan (Companies, Partnerships)",
-                  ]}
-                  onSelect={(v) => {
-                    set({ loanType: v });
-                    next();
-                  }}
+        </div>
+      </section>
+
+      {/* Products strip */}
+      <section className="bg-secondary/60 py-12">
+        <div className="mx-auto max-w-[1280px] px-5">
+          <SectionHeading
+            title="Our Loan Products"
+            subtitle="From your first two wheeler to your growing enterprise — Chola funds every milestone."
+          />
+          <div className="chola-no-scrollbar -mx-5 flex gap-4 overflow-x-auto px-5 pb-2 snap-x snap-mandatory">
+            {PRODUCT_CARDS.map((card) => (
+              <Link
+                key={card.title}
+                to="/apply"
+                className="group relative h-[230px] w-[240px] shrink-0 snap-start overflow-hidden rounded-xl shadow-md sm:h-[260px] sm:w-[280px]"
+              >
+                <img
+                  src={card.image}
+                  alt={card.title}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                 />
-              </>
-            )}
+                <span className="absolute inset-0 bg-gradient-to-t from-chola-blue-dark/90 via-chola-blue-dark/25 to-transparent" />
+                <span className="absolute bottom-0 left-0 right-0 p-4">
+                  <span className="block text-[15px] font-bold leading-snug text-white">
+                    {card.title}
+                  </span>
+                  <span className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold uppercase tracking-wide text-white/85">
+                    Know more <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
 
-            {step === 1 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">Type of occupation</h2>
-                <OptionGrid
-                  options={["Salaried", "Business", "Self-Employed"]}
-                  onSelect={(v) => {
-                    set({ occupation: v });
-                    next();
-                  }}
-                />
-              </>
-            )}
+      {/* Apply tiles */}
+      <section id="apply-tiles" className="bg-white py-14">
+        <div className="mx-auto max-w-[1280px] px-5">
+          <SectionHeading title="Choose the Loan you want to apply for" />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {APPLY_TILES.map(({ title, Icon }) => (
+              <Link
+                key={title}
+                to="/apply"
+                className="group flex items-center gap-3 rounded-xl border border-border bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:border-chola-red/40 hover:shadow-lg"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-chola-blue transition-colors group-hover:bg-chola-red group-hover:text-white">
+                  <Icon className="h-6 w-6" />
+                </span>
+                <span className="text-[13px] font-semibold leading-tight text-chola-blue-dark">
+                  {title}
+                </span>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-9 text-center">
+            <Link
+              to="/apply"
+              className="inline-flex items-center gap-2 rounded-full bg-chola-red px-9 py-3.5 text-[14px] font-bold uppercase tracking-wide text-white shadow-lg transition-transform hover:scale-105"
+            >
+              Apply Now
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
 
-            {step === 2 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">Company Name</h2>
-                <div className="flex">
-                  <Input
-                    value={answers.company}
-                    onChange={(e) => set({ company: e.target.value })}
-                    className="h-14 rounded-r-none border-r-0 bg-card text-base"
-                  />
-                  <Button
-                    onClick={() => answers.company.trim() && next()}
-                    className="h-14 rounded-l-none px-6 text-base"
-                  >
-                    Submit
-                  </Button>
-                </div>
-              </>
-            )}
+      {/* EMI calculator */}
+      <section className="bg-secondary/60 py-14">
+        <div className="mx-auto max-w-[1280px] px-5">
+          <SectionHeading
+            title="EMI Calculator"
+            subtitle="Plan your repayment before you apply. Move the sliders to see your monthly outgo."
+          />
+          <EmiCalculator />
+        </div>
+      </section>
 
-            {step === 3 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">Contact Details</h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm text-foreground">First Name as per Pan *</label>
-                    <Input
-                      placeholder="First Name as per Pan"
-                      value={answers.firstName}
-                      onChange={(e) => set({ firstName: e.target.value })}
-                      className="mt-1 h-12 bg-card"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-foreground">Last Name as per Pan *</label>
-                    <Input
-                      placeholder="Last Name as per Pan"
-                      value={answers.lastName}
-                      onChange={(e) => set({ lastName: e.target.value })}
-                      className="mt-1 h-12 bg-card"
-                    />
-                  </div>
-                  <select
-                    className={selectClass()}
-                    value={answers.state}
-                    onChange={(e) => set({ state: e.target.value, city: "" })}
-                  >
-                    <option value="">Select State</option>
-                    {Object.keys(STATES).map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                  <select
-                    className={selectClass()}
-                    value={answers.city}
-                    onChange={(e) => set({ city: e.target.value })}
-                  >
-                    <option value="">Select City</option>
-                    {(STATES[answers.state] ?? []).map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </select>
-                  <div>
-                    <label className="text-sm text-foreground">Pincode *</label>
-                    <Input
-                      placeholder="Pincode"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={answers.pincode}
-                      onChange={(e) => set({ pincode: e.target.value.replace(/\D/g, "") })}
-                      className="mt-1 h-12 bg-card"
-                    />
-                  </div>
-                  <select
-                    className={selectClass()}
-                    value={answers.gender}
-                    onChange={(e) => set({ gender: e.target.value })}
-                  >
-                    <option value="">Select Gender</option>
-                    <option>Male</option>
-                    <option>Female</option>
-                    <option>Other</option>
-                  </select>
-                  <div>
-                    <label className="text-sm text-foreground">DOB *</label>
-                    <Input
-                      type="date"
-                      value={answers.dob}
-                      onChange={(e) => set({ dob: e.target.value })}
-                      className="mt-1 h-12 bg-card"
-                    />
-                  </div>
-                  <Input readOnly placeholder="Age" value={age} className="h-12 bg-card" />
-                  <div>
-                    <label htmlFor="pan-number" className="text-sm text-foreground">
-                      Pan Number *
-                    </label>
-                    <Input
-                      id="pan-number"
-                      placeholder="ABCDE1234F"
-                      maxLength={10}
-                      autoCapitalize="characters"
-                      autoComplete="off"
-                      aria-invalid={answers.pan.length > 0 && !panValid}
-                      aria-describedby="pan-help"
-                      value={answers.pan}
-                      onChange={(e) =>
-                        set({ pan: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })
-                      }
-                      className="mt-1 h-12 bg-card"
-                    />
-                    <p
-                      id="pan-help"
-                      className={`mt-1 text-xs ${
-                        answers.pan.length > 0 && !panValid
-                          ? "text-destructive"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {answers.pan.length > 0 && !panValid
-                        ? "Enter a valid PAN in the format ABCDE1234F (5 letters, 4 digits, 1 letter)."
-                        : "Format: 5 letters, 4 digits, 1 letter — e.g. ABCDE1234F"}
-                    </p>
-                  </div>
-                  <div className="flex justify-center pt-2">
-                    <Button
-                      disabled={!contactValid}
-                      onClick={next}
-                      className="h-12 rounded-full px-10 text-base"
-                    >
-                      Submit
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
+      {/* Why Chola */}
+      <section className="bg-white py-14">
+        <div className="mx-auto max-w-[1280px] px-5">
+          <SectionHeading title="Why Chola" />
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {WHY_CHOLA.map(({ Icon, title, body }) => (
+              <div
+                key={title}
+                className="rounded-xl border border-border bg-white p-6 text-center shadow-sm transition-shadow hover:shadow-lg"
+              >
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-chola-blue/10 text-chola-blue">
+                  <Icon className="h-7 w-7" />
+                </span>
+                <h3 className="mt-4 text-[16px] font-bold text-chola-blue-dark">{title}</h3>
+                <p className="mt-2 text-[13px] leading-relaxed text-chola-grey">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-            {step === 4 && (
-              <>
-                <h2 className="mb-2 text-center text-lg font-bold">Upload KYC Documents</h2>
-                <p className="mb-5 text-center text-xs text-muted-foreground">
-                  JPG, PNG or PDF · maximum 900 KB per file
-                </p>
-                <div className="space-y-4">
-                  <label className="block rounded-md border border-dashed border-primary/50 bg-card p-4 text-center">
-                    <Upload className="mx-auto h-7 w-7 text-primary" />
-                    <span className="mt-2 block text-sm font-semibold">PAN Card *</span>
-                    <span className="mt-1 block truncate text-xs text-muted-foreground">
-                      {panDocument?.name ?? "Choose PAN image or PDF"}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,application/pdf"
-                      className="sr-only"
-                      onChange={(event) =>
-                        void selectDocument(event.target.files?.[0], setPanDocument)
-                      }
-                    />
-                    {panDocument && <FileCheck2 className="mx-auto mt-2 h-5 w-5 text-success" />}
-                  </label>
+      {/* Stats */}
+      <section className="bg-chola-blue-dark py-12 text-white">
+        <div className="mx-auto grid max-w-[1280px] grid-cols-2 gap-8 px-5 lg:grid-cols-4">
+          {STATS.map((stat) => (
+            <div key={stat.label} className="text-center">
+              <p className="text-2xl font-bold sm:text-3xl">{stat.value}</p>
+              <p className="mt-1 text-[13px] text-white/70">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-                  <label className="block rounded-md border border-dashed border-primary/50 bg-card p-4 text-center">
-                    <Upload className="mx-auto h-7 w-7 text-primary" />
-                    <span className="mt-2 block text-sm font-semibold">Aadhaar Card Front *</span>
-                    <span className="mt-1 block truncate text-xs text-muted-foreground">
-                      {aadhaarFrontDocument?.name ?? "Choose Aadhaar front image or PDF"}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,application/pdf"
-                      className="sr-only"
-                      onChange={(event) =>
-                        void selectDocument(event.target.files?.[0], setAadhaarFrontDocument)
-                      }
-                    />
-                    {aadhaarFrontDocument && (
-                      <FileCheck2 className="mx-auto mt-2 h-5 w-5 text-success" />
-                    )}
-                  </label>
+      {/* Pay EMI + callback */}
+      <section className="bg-white py-14">
+        <div className="mx-auto grid max-w-[1280px] gap-8 px-5 lg:grid-cols-2">
+          <div className="rounded-xl border border-border bg-secondary/50 p-7">
+            <h2 className="text-[20px] font-bold text-chola-blue-dark">Pay EMI</h2>
+            <span className="mt-2 block h-[3px] w-12 bg-chola-red" />
+            <p className="mt-4 text-[14px] text-chola-grey">
+              Pay your instalment instantly through our secure payment partners.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                to="/apply"
+                className="rounded-full border-2 border-chola-blue px-6 py-2.5 text-[13px] font-bold text-chola-blue transition-colors hover:bg-chola-blue hover:text-white"
+              >
+                Vehicle Loans
+              </Link>
+              <Link
+                to="/apply"
+                className="rounded-full border-2 border-chola-blue px-6 py-2.5 text-[13px] font-bold text-chola-blue transition-colors hover:bg-chola-blue hover:text-white"
+              >
+                Chola One
+              </Link>
+            </div>
+            <div className="mt-7 flex items-center gap-3 rounded-lg bg-white p-4">
+              <Phone className="h-9 w-9 shrink-0 rounded-full bg-chola-red/10 p-2 text-chola-red" />
+              <div>
+                <p className="text-[13px] font-bold text-chola-blue-dark">Customer care</p>
+                <p className="text-[13px] text-chola-grey">1800 200 4565 (Mon–Sat, 9 am–7 pm)</p>
+              </div>
+            </div>
+          </div>
 
-                  <label className="block rounded-md border border-dashed border-primary/50 bg-card p-4 text-center">
-                    <Upload className="mx-auto h-7 w-7 text-primary" />
-                    <span className="mt-2 block text-sm font-semibold">Aadhaar Card Back *</span>
-                    <span className="mt-1 block truncate text-xs text-muted-foreground">
-                      {aadhaarBackDocument?.name ?? "Choose Aadhaar back image or PDF"}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,application/pdf"
-                      className="sr-only"
-                      onChange={(event) =>
-                        void selectDocument(event.target.files?.[0], setAadhaarBackDocument)
-                      }
-                    />
-                    {aadhaarBackDocument && (
-                      <FileCheck2 className="mx-auto mt-2 h-5 w-5 text-success" />
-                    )}
-                  </label>
-
-                  {uploadError && (
-                    <p className="text-center text-sm text-destructive">{uploadError}</p>
-                  )}
-                  <div className="flex justify-center pt-2">
-                    <Button
-                      disabled={!panDocument || !aadhaarFrontDocument || !aadhaarBackDocument}
-                      onClick={next}
-                      className="h-12 rounded-full px-10 text-base"
-                    >
-                      Continue
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {step === 5 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">Monthly Income Range</h2>
-                <OptionGrid
-                  options={["₹20,000-40,000", "₹40,001-60,000", "Above ₹60,000"]}
-                  onSelect={(v) => {
-                    set({ income: v });
-                    next();
-                  }}
-                />
-              </>
-            )}
-
-            {step === 6 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">Type of Sectors</h2>
-                <OptionGrid
-                  options={["Private", "Own", "Government"]}
-                  onSelect={(v) => {
-                    set({ sector: v });
-                    next();
-                  }}
-                />
-              </>
-            )}
-
-            {step === 7 && (
-              <>
-                <h2 className="mb-5 text-center text-lg font-bold">Have Net-Banking?</h2>
-                <OptionGrid
-                  options={["Yes", "No"]}
-                  disabled={submitting}
-                  onSelect={(value) => void submitApplication(value)}
-                />
-                {submitting && (
-                  <p className="mt-4 flex items-center justify-center gap-2 text-sm text-primary">
-                    <LoaderCircle className="h-4 w-4 animate-spin" /> Submitting your application…
-                  </p>
-                )}
-                {submissionError && (
-                  <div className="mt-4 text-center">
-                    <p className="text-sm text-destructive">{submissionError}</p>
-                    <button
-                      type="button"
-                      onClick={() => setStep(3)}
-                      className="mt-2 text-sm font-medium text-primary underline"
-                    >
-                      Go back and correct your details
-                    </button>
-                  </div>
-                )}
-              </>
+          <div className="rounded-xl border border-border bg-white p-7 shadow-sm">
+            <h2 className="text-[20px] font-bold leading-snug text-chola-blue-dark">
+              Choose one of the options below &amp; get a call back from our customer support team
+            </h2>
+            <span className="mt-2 block h-[3px] w-12 bg-chola-red" />
+            <div className="mt-5 flex gap-3">
+              {(["existing", "new"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setCallbackType(option)}
+                  className={`flex-1 rounded-full border-2 px-4 py-2.5 text-[13px] font-semibold transition-colors ${
+                    callbackType === option
+                      ? "border-chola-red bg-chola-red text-white"
+                      : "border-border text-chola-grey hover:border-chola-blue"
+                  }`}
+                >
+                  {option === "existing" ? "Existing Chola Customer" : "New to Chola Customer"}
+                </button>
+              ))}
+            </div>
+            <form
+              className="mt-5 grid gap-3 sm:grid-cols-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setCallbackSent(true);
+              }}
+            >
+              <input
+                required
+                placeholder="Full name"
+                className="h-11 rounded-md border border-input px-3 text-sm outline-none focus:border-chola-blue"
+              />
+              <input
+                required
+                type="tel"
+                pattern="[0-9]{10}"
+                placeholder="Mobile number"
+                className="h-11 rounded-md border border-input px-3 text-sm outline-none focus:border-chola-blue"
+              />
+              <select
+                className="h-11 rounded-md border border-input bg-white px-3 text-sm outline-none focus:border-chola-blue sm:col-span-2"
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  Select a product
+                </option>
+                {APPLY_TILES.map((tile) => (
+                  <option key={tile.title}>{tile.title}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="h-11 rounded-full bg-chola-blue text-[13px] font-bold uppercase tracking-wide text-white transition-colors hover:bg-chola-blue-dark sm:col-span-2"
+              >
+                Request a call back
+              </button>
+            </form>
+            {callbackSent && (
+              <p className="mt-3 text-[13px] font-semibold text-success">
+                Thank you! Our team will call you back shortly.
+              </p>
             )}
           </div>
-        )}
-
-        {!application && step > 0 && (
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={prev}
-            className="mt-6 rounded-full bg-card px-5 py-3 text-sm text-foreground shadow-sm"
-          >
-            ← Previous
-          </button>
-        )}
-
-        <div className="mt-10 grid grid-cols-2 gap-3">
-          <Link
-            to="/loans"
-            className="rounded-md border border-primary/40 bg-card px-3 py-3 text-center text-sm text-primary shadow-sm hover:bg-primary hover:text-primary-foreground"
-          >
-            Loan Types
-          </Link>
-          <Link
-            to="/eligibility"
-            className="rounded-md border border-primary/40 bg-card px-3 py-3 text-center text-sm text-primary shadow-sm hover:bg-primary hover:text-primary-foreground"
-          >
-            Eligibility
-          </Link>
-          <Link
-            to="/faq"
-            className="rounded-md border border-primary/40 bg-card px-3 py-3 text-center text-sm text-primary shadow-sm hover:bg-primary hover:text-primary-foreground"
-          >
-            FAQ
-          </Link>
-          <Link
-            to="/contact"
-            className="rounded-md border border-primary/40 bg-card px-3 py-3 text-center text-sm text-primary shadow-sm hover:bg-primary hover:text-primary-foreground"
-          >
-            Contact Us
-          </Link>
         </div>
-      </main>
+      </section>
+
+      {/* Closing CTA */}
+      <section className="bg-secondary/60 py-14">
+        <div className="mx-auto max-w-[1280px] px-5">
+          <div className="flex flex-col items-center justify-between gap-5 rounded-2xl bg-gradient-to-r from-chola-blue-dark to-chola-blue px-7 py-9 text-white md:flex-row">
+            <div>
+              <h2 className="text-[22px] font-bold sm:text-[26px]">
+                Ready to enter a better life?
+              </h2>
+              <p className="mt-2 text-[14px] text-white/80">
+                Complete the online application in a few minutes — minimum documentation, quick
+                processing.
+              </p>
+            </div>
+            <Link
+              to="/apply"
+              className="shrink-0 rounded-full bg-white px-9 py-3.5 text-[14px] font-bold uppercase tracking-wide text-chola-blue-dark shadow-lg transition-transform hover:scale-105"
+            >
+              Apply Now
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <SiteFooter />
+
+      {/* Floating apply button (mobile) */}
+      <Link
+        to="/apply"
+        className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-full bg-chola-red px-8 py-3 text-[14px] font-bold uppercase tracking-wide text-white shadow-2xl lg:hidden"
+      >
+        Apply Now
+      </Link>
     </div>
   );
 }
