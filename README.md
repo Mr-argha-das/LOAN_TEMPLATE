@@ -157,13 +157,10 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d your-domain.com    # HTTPS, required for secure admin cookies
 ```
 
-Updating later:
+Updating later — one command does pull + build + restart:
 
 ```sh
-git pull origin arena/01a0856a-loan-template
-npm install
-npm run build:node
-pm2 restart loan-app
+bash scripts/deploy.sh
 ```
 
 Requires Node 22+ (uses the built-in `node:sqlite` module). Back up `DATA_DIR`

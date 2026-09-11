@@ -17,7 +17,8 @@
     "deploy": "npm run build:cf && wrangler deploy --config .output/server/wrangler.json",
     "db:migrate:remote": "node scripts/apply-d1-migrations.mjs",
     "build:node": "NITRO_PRESET=node-server vite build",
-    "start": "node .output/server/index.mjs"
+    "start": "node .output/server/index.mjs",
+    "deploy:vps": "bash scripts/deploy.sh"
   },
   "overrides": {
     "rolldown": "1.2.1"
