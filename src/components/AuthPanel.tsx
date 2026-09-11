@@ -1,20 +1,30 @@
-import { useState } from "react";
-import { LogIn, UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LogIn, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { loginUser, registerUser, type AuthUser } from "@/lib/loan-applications";
 
-export function AuthPanel({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+export type AuthMode = "login" | "register";
+
+export function AuthForm({
+  initialMode = "login",
+  onAuthenticated,
+}: {
+  initialMode?: AuthMode;
+  onAuthenticated: (user: AuthUser) => void;
+}) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => setMode(initialMode), [initialMode]);
+
   const register = mode === "register";
 
-  const switchMode = (next: "login" | "register") => {
+  const switchMode = (next: AuthMode) => {
     setMode(next);
     setError("");
     setPassword("");
@@ -41,7 +51,7 @@ export function AuthPanel({ onAuthenticated }: { onAuthenticated: (user: AuthUse
   }
 
   return (
-    <section className="mt-4 rounded-md border border-primary/20 bg-card/80 p-5 shadow-sm backdrop-blur-sm">
+    <div>
       <div className="grid grid-cols-2 gap-2 rounded-full bg-secondary p-1">
         {(["login", "register"] as const).map((value) => (
           <button
@@ -161,6 +171,63 @@ export function AuthPanel({ onAuthenticated }: { onAuthenticated: (user: AuthUse
           {register ? "Login" : "Create one"}
         </button>
       </p>
+    </div>
+  );
+}
+
+/** Inline card used on the application page when the visitor is signed out. */
+export function AuthPanel({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
+  return (
+    <section className="mt-4 rounded-md border border-primary/20 bg-card/80 p-5 shadow-sm backdrop-blur-sm">
+      <AuthForm onAuthenticated={onAuthenticated} />
     </section>
+  );
+}
+
+/** Modal opened from the site header. */
+export function AuthDialog({
+  mode,
+  onClose,
+  onAuthenticated,
+}: {
+  mode: AuthMode;
+  onClose: () => void;
+  onAuthenticated: (user: AuthUser) => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={mode === "register" ? "Create your account" : "Login"}
+      className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="relative my-auto w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <AuthForm initialMode={mode} onAuthenticated={onAuthenticated} />
+      </div>
+    </div>
   );
 }

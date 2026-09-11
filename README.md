@@ -30,7 +30,9 @@ npm run dev
 
 ## Accounts
 
-The home page opens with a Login / Register panel. Registering takes a full name,
+The marketing home page (`/`) has **Login** and **Register** buttons in the header
+that open a modal; the loan application wizard lives at `/apply` and shows an
+inline Login / Register panel when signed out. Registering takes a full name,
 email and password (minimum 8 characters); logging in takes email and password.
 Passwords are stored as PBKDF2-SHA256 hashes with a per-user salt and are never
 returned by the API. The session is an HttpOnly cookie that lasts 30 days.
