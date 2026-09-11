@@ -1,4 +1,4 @@
-import { integer, index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const loanApplications = sqliteTable(
   "loan_applications",
@@ -30,6 +30,7 @@ export const loanApplications = sqliteTable(
     paymentQrType: text("payment_qr_type"),
     feePaidMarkedAt: text("fee_paid_marked_at"),
     loanTransferredAt: text("loan_transferred_at"),
+    userId: text("user_id"),
     approvalTitle: text("approval_title").notNull().default(""),
     approvalImageKey: text("approval_image_key"),
     approvalImageName: text("approval_image_name"),
@@ -38,4 +39,17 @@ export const loanApplications = sqliteTable(
     reviewedAt: text("reviewed_at"),
   },
   (table) => [index("idx_loan_applications_status_created").on(table.status, table.createdAt)],
+);
+
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    fullName: text("full_name").notNull(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: text("created_at").notNull(),
+    lastLoginAt: text("last_login_at"),
+  },
+  (table) => [uniqueIndex("idx_users_email").on(table.email)],
 );

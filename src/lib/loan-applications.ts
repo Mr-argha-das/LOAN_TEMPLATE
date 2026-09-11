@@ -36,6 +36,14 @@ export type BankDetails = {
   ifsc: string;
 };
 
+export type AuthUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  createdAt: string;
+  lastLoginAt?: string;
+};
+
 export type ApplicationStatus = {
   approvedAmount?: number;
   disbursementStatus?: "processing";
@@ -57,6 +65,7 @@ export type ApplicationStatus = {
 export type LoanApplication = LoanApplicationAnswers &
   ApplicationStatus & {
     bankDetails?: BankDetails;
+    account?: { fullName: string; email: string };
     paymentQr?: StoredDocument;
     panDocument: StoredDocument;
     aadhaarFrontDocument: StoredDocument;
@@ -224,4 +233,54 @@ export async function markLoanTransferred(id: string): Promise<LoanApplication> 
   );
   notifyApplicationsChanged();
   return application;
+}
+
+export const AUTH_CHANGED_EVENT = "chola-auth-changed";
+
+function notifyAuthChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
+export async function registerUser(
+  fullName: string,
+  email: string,
+  password: string,
+): Promise<AuthUser> {
+  const user = await readJson<AuthUser>(
+    await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fullName, email, password }),
+    }),
+  );
+  notifyAuthChanged();
+  return user;
+}
+
+export async function loginUser(email: string, password: string): Promise<AuthUser> {
+  const user = await readJson<AuthUser>(
+    await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }),
+  );
+  notifyAuthChanged();
+  return user;
+}
+
+export async function getCurrentUser(): Promise<AuthUser | undefined> {
+  const response = await fetch("/api/auth/me");
+  if (response.status === 401) return undefined;
+  return readJson<AuthUser>(response);
+}
+
+export async function logoutUser(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST" });
+  clearActiveLoanApplication();
+  notifyAuthChanged();
+}
+
+export async function getRegisteredUsers(): Promise<AuthUser[]> {
+  return readJson<AuthUser[]>(await fetch("/api/admin/users"));
 }

@@ -28,6 +28,18 @@ npm run dev
 - React
 - Tailwind CSS
 
+## Accounts
+
+The home page opens with a Login / Register panel. Registering takes a full name,
+email and password (minimum 8 characters); logging in takes email and password.
+Passwords are stored as PBKDF2-SHA256 hashes with a per-user salt and are never
+returned by the API. The session is an HttpOnly cookie that lasts 30 days.
+
+A loan application can only be submitted while signed in, and every application is
+linked to the account that created it. The admin console lists all registered
+users (name, email, registered date, last login) and shows the linked account on
+each application card.
+
 ## Approval and disbursement flow
 
 After submission, the existing admin review is retained. The admin sets an approved

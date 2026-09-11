@@ -21,6 +21,7 @@ for (const mode of ["local", "durable"]) {
       "0001_icy_echo",
       "0002_nice_revanche",
       "0003_processing_fee",
+      "0004_users",
     ]) {
       database.exec(readFileSync(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"));
     }
@@ -87,7 +88,57 @@ for (const mode of ["local", "durable"]) {
     for (const key of ["panDocument", "aadhaarFrontDocument", "aadhaarBackDocument"]) {
       form.set(key, new File(["test document"], "test.png", { type: "image/png" }));
     }
-    const created = await request("/api/applications", { method: "POST", body: form });
+    // Applications now require a signed-in user account.
+    assert.equal((await request("/api/applications", { method: "POST", body: form })).status, 401);
+    const registered = await request("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fullName: "Test Applicant",
+        email: "Test.User@Example.com",
+        password: "sup3rsecret",
+      }),
+    });
+    assert.equal(registered.status, 201);
+    const account = await registered.json();
+    assert.equal(account.email, "test.user@example.com", "emails are normalised");
+    assert.equal(account.password, undefined, "password is never returned");
+    const userCookie = registered.headers.get("set-cookie").split(";")[0];
+    for (const body of [
+      { fullName: "A", email: "a@b.co", password: "sup3rsecret" },
+      { fullName: "Valid Name", email: "not-an-email", password: "sup3rsecret" },
+      { fullName: "Valid Name", email: "new@example.com", password: "short" },
+      { fullName: "Dup", email: "test.user@example.com", password: "sup3rsecret" },
+    ]) {
+      const response = await request("/api/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      assert.ok(response.status === 400 || response.status === 409, `rejects ${body.email}`);
+    }
+    const badLogin = await request("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "test.user@example.com", password: "wrong-password" }),
+    });
+    assert.equal(badLogin.status, 401);
+    const goodLogin = await request("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "TEST.USER@example.com", password: "sup3rsecret" }),
+    });
+    assert.equal(goodLogin.status, 200);
+    assert.equal((await request("/api/auth/me")).status, 401, "no cookie means no session");
+    const me = await request("/api/auth/me", { headers: { cookie: userCookie } });
+    assert.equal(me.status, 200);
+    assert.equal((await me.json()).fullName, "Test Applicant");
+
+    const created = await request("/api/applications", {
+      method: "POST",
+      body: form,
+      headers: { cookie: userCookie },
+    });
     assert.equal(created.status, 201);
     const application = await created.json();
     assert.equal(application.status, "pending");
@@ -157,10 +208,17 @@ for (const mode of ["local", "durable"]) {
       "repeat requests are idempotent",
     );
     assert.equal((await approve()).status, 409, "approval is locked after disbursement submission");
+    assert.equal((await request("/api/admin/users")).status, 401);
+    const accounts = await (await request("/api/admin/users", { headers: { cookie } })).json();
+    assert.equal(accounts.length, 1, "admin sees the registered account");
+    assert.equal(accounts[0].email, "test.user@example.com");
+    assert.equal(accounts[0].passwordHash, undefined, "password hash is never exposed");
+
     const adminRows = await (
       await request("/api/admin/applications", { headers: { cookie } })
     ).json();
     const row = adminRows.find((entry) => entry.id === application.id);
+    assert.equal(row.account.email, "test.user@example.com", "application links to its account");
     assert.equal(row.bankDetails.accountNumber, bank.accountNumber);
     assert.equal(row.bankDetails.ifsc, "SBIN0001234");
     // Processing fee: QR must be configured before the applicant can confirm payment.

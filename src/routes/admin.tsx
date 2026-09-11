@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   QrCode,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,10 +20,12 @@ import {
   approveLoanApplication,
   formatLoanAmount,
   getLoanApplications,
+  getRegisteredUsers,
   loginAdmin,
   markLoanTransferred,
   readUpload,
   savePaymentDetails,
+  type AuthUser,
   type LoanApplication,
   type SelectedUpload,
   type StoredDocument,
@@ -94,6 +97,7 @@ function DocumentCard({ label, document }: { label: string; document: StoredDocu
 
 function AdminPage() {
   const [applications, setApplications] = useState<LoanApplication[]>([]);
+  const [users, setUsers] = useState<AuthUser[]>([]);
   const [drafts, setDrafts] = useState<Record<string, ApprovalDraft>>({});
   const [password, setPassword] = useState("");
   const [authenticated, setAuthenticated] = useState<boolean>();
@@ -103,7 +107,12 @@ function AdminPage() {
 
   const refresh = useCallback(async () => {
     try {
-      setApplications(await getLoanApplications());
+      const [nextApplications, nextUsers] = await Promise.all([
+        getLoanApplications(),
+        getRegisteredUsers(),
+      ]);
+      setApplications(nextApplications);
+      setUsers(nextUsers);
       setAuthenticated(true);
     } catch {
       setAuthenticated(false);
@@ -285,6 +294,48 @@ function AdminPage() {
           </p>
         </div>
 
+        <section className="mb-8 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="flex items-center gap-2 border-b border-border p-5">
+            <Users className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-bold">Registered users</h2>
+            <span className="ml-auto rounded-full bg-secondary px-3 py-1 text-xs font-semibold">
+              {users.length}
+            </span>
+          </div>
+          {users.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">
+              No accounts yet. Users appear here as soon as they register on the home page.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-secondary/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">Full name</th>
+                    <th className="px-5 py-3 font-semibold">Email</th>
+                    <th className="px-5 py-3 font-semibold">Registered</th>
+                    <th className="px-5 py-3 font-semibold">Last login</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((account) => (
+                    <tr key={account.id} className="border-t border-border/70">
+                      <td className="px-5 py-3 font-medium">{account.fullName}</td>
+                      <td className="break-all px-5 py-3">{account.email}</td>
+                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
+                        {new Date(account.createdAt).toLocaleString()}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
+                        {account.lastLoginAt ? new Date(account.lastLoginAt).toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         {applications.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-card py-20 text-center">
             <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -312,6 +363,11 @@ function AdminPage() {
                       <h2 className="text-lg font-bold">
                         {application.firstName} {application.lastName}
                       </h2>
+                      {application.account && (
+                        <p className="mt-1 text-xs font-medium text-primary">
+                          {application.account.fullName} · {application.account.email}
+                        </p>
+                      )}
                       <p className="mt-1 break-all text-xs text-muted-foreground">
                         {application.id} · {new Date(application.createdAt).toLocaleString()}
                       </p>

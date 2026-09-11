@@ -49,6 +49,7 @@ type ApplicationRow = {
   payment_qr_type: string | null;
   fee_paid_marked_at: string | null;
   loan_transferred_at: string | null;
+  user_id: string | null;
   id: string;
   answers_json: string;
   status: "pending" | "approved";
@@ -72,14 +73,26 @@ type ApplicationRow = {
   reviewed_at: string | null;
 };
 
+type UserRow = {
+  id: string;
+  full_name: string;
+  email: string;
+  password_hash: string;
+  created_at: string;
+  last_login_at: string | null;
+};
+
 type LocalFile = { body: ArrayBuffer; type: string };
 
 const localApplications: ApplicationRow[] = [];
+const localUsers: UserRow[] = [];
 const localFiles = new Map<string, LocalFile>();
 const MAX_UPLOAD_BYTES = 900_000;
 const DOCUMENT_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ADMIN_COOKIE = "chola_admin_session";
+const USER_COOKIE = "chola_user_session";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const LOCAL_ADMIN_PASSWORD = "admin123";
 
 class HttpError extends Error {
@@ -209,8 +222,8 @@ async function insertApplication(mode: "durable" | "local", env: RuntimeEnv, row
         aadhaar_document_key, aadhaar_document_name, aadhaar_document_type,
         aadhaar_front_document_key, aadhaar_front_document_name, aadhaar_front_document_type,
         aadhaar_back_document_key, aadhaar_back_document_name, aadhaar_back_document_type,
-        approval_title, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        approval_title, created_at, user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -230,6 +243,7 @@ async function insertApplication(mode: "durable" | "local", env: RuntimeEnv, row
       row.aadhaar_back_document_type,
       row.approval_title,
       row.created_at,
+      row.user_id,
     )
     .run();
 }
@@ -325,10 +339,11 @@ function storedDocument(
   } satisfies StoredDocument;
 }
 
-function adminApplication(row: ApplicationRow): LoanApplication {
+function adminApplication(row: ApplicationRow, account?: UserRow | null): LoanApplication {
   const answers = JSON.parse(row.answers_json) as LoanApplicationAnswers;
   return {
     ...answers,
+    ...(account ? { account: { fullName: account.full_name, email: account.email } } : {}),
     ...publicStatus(row),
     ...(row.bank_details_json
       ? { bankDetails: JSON.parse(row.bank_details_json) as BankDetails }
@@ -424,8 +439,188 @@ async function serveFile(
   });
 }
 
+// ---------------------------------------------------------------- user auth
+
+function normaliseEmail(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function toHex(buffer: ArrayBuffer) {
+  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashPassword(password: string, salt: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: new TextEncoder().encode(salt),
+      iterations: 100_000,
+      hash: "SHA-256",
+    },
+    key,
+    256,
+  );
+  return `pbkdf2$100000$${salt}$${toHex(bits)}`;
+}
+
+async function verifyPassword(password: string, stored: string) {
+  const parts = stored.split("$");
+  if (parts.length !== 4 || !parts[2]) return false;
+  const candidate = await hashPassword(password, parts[2]);
+  if (candidate.length !== stored.length) return false;
+  let diff = 0;
+  for (let index = 0; index < candidate.length; index += 1) {
+    diff |= candidate.charCodeAt(index) ^ stored.charCodeAt(index);
+  }
+  return diff === 0;
+}
+
+async function userSessionToken(user: UserRow) {
+  const bytes = new TextEncoder().encode(`chola-user:${user.id}:${user.password_hash}`);
+  return toHex(await crypto.subtle.digest("SHA-256", bytes));
+}
+
+async function insertUser(mode: "durable" | "local", env: RuntimeEnv, row: UserRow) {
+  if (mode === "local") {
+    localUsers.push(row);
+    return;
+  }
+  await env
+    .DB!.prepare(
+      `INSERT INTO users (id, full_name, email, password_hash, created_at, last_login_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(row.id, row.full_name, row.email, row.password_hash, row.created_at, row.last_login_at)
+    .run();
+}
+
+async function findUserByEmail(mode: "durable" | "local", env: RuntimeEnv, email: string) {
+  if (mode === "local") return localUsers.find((user) => user.email === email) ?? null;
+  return env.DB!.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<UserRow>();
+}
+
+async function findUserById(mode: "durable" | "local", env: RuntimeEnv, id: string) {
+  if (mode === "local") return localUsers.find((user) => user.id === id) ?? null;
+  return env.DB!.prepare("SELECT * FROM users WHERE id = ?").bind(id).first<UserRow>();
+}
+
+async function listUsers(mode: "durable" | "local", env: RuntimeEnv): Promise<UserRow[]> {
+  if (mode === "local") return [...localUsers].reverse();
+  const result = await env
+    .DB!.prepare("SELECT * FROM users ORDER BY created_at DESC")
+    .all<UserRow>();
+  return result.results;
+}
+
+async function touchLastLogin(mode: "durable" | "local", env: RuntimeEnv, user: UserRow) {
+  const now = new Date().toISOString();
+  user.last_login_at = now;
+  if (mode === "local") return;
+  await env.DB!.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").bind(now, user.id).run();
+}
+
+function publicUser(row: UserRow) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    createdAt: row.created_at,
+    ...(row.last_login_at ? { lastLoginAt: row.last_login_at } : {}),
+  };
+}
+
+function sessionCookie(request: Request, token: string) {
+  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
+  return `${USER_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure}`;
+}
+
+async function currentUser(request: Request, mode: "durable" | "local", env: RuntimeEnv) {
+  const raw = cookieValue(request, USER_COOKIE);
+  if (!raw) return null;
+  const [id, token] = raw.split(".");
+  if (!id || !token) return null;
+  const user = await findUserById(mode, env, decodeURIComponent(id));
+  if (!user || (await userSessionToken(user)) !== token) return null;
+  return user;
+}
+
+async function handleRegister(request: Request, env: RuntimeEnv) {
+  const mode = requireStorage(request, env);
+  const input = (await request.json().catch(() => null)) as {
+    fullName?: unknown;
+    email?: unknown;
+    password?: unknown;
+  } | null;
+  const fullName = typeof input?.fullName === "string" ? input.fullName.trim() : "";
+  const email = normaliseEmail(input?.email);
+  const password = typeof input?.password === "string" ? input.password : "";
+
+  if (fullName.length < 2 || fullName.length > 100) {
+    throw new HttpError(400, "Enter your full name.");
+  }
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+    throw new HttpError(400, "Enter a valid email address.");
+  }
+  if (password.length < 8 || password.length > 200) {
+    throw new HttpError(400, "Password must be at least 8 characters.");
+  }
+  if (await findUserByEmail(mode, env, email)) {
+    throw new HttpError(409, "An account with this email already exists. Please sign in.");
+  }
+
+  const salt = toHex(crypto.getRandomValues(new Uint8Array(16)).buffer);
+  const row: UserRow = {
+    id: crypto.randomUUID(),
+    full_name: fullName,
+    email,
+    password_hash: await hashPassword(password, salt),
+    created_at: new Date().toISOString(),
+    last_login_at: new Date().toISOString(),
+  };
+  await insertUser(mode, env, row);
+  return json(
+    publicUser(row),
+    201,
+    new Headers({
+      "set-cookie": sessionCookie(request, `${row.id}.${await userSessionToken(row)}`),
+    }),
+  );
+}
+
+async function handleUserLogin(request: Request, env: RuntimeEnv) {
+  const mode = requireStorage(request, env);
+  const input = (await request.json().catch(() => null)) as {
+    email?: unknown;
+    password?: unknown;
+  } | null;
+  const email = normaliseEmail(input?.email);
+  const password = typeof input?.password === "string" ? input.password : "";
+  const user = await findUserByEmail(mode, env, email);
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
+    throw new HttpError(401, "Incorrect email or password.");
+  }
+  await touchLastLogin(mode, env, user);
+  return json(
+    publicUser(user),
+    200,
+    new Headers({
+      "set-cookie": sessionCookie(request, `${user.id}.${await userSessionToken(user)}`),
+    }),
+  );
+}
+
 async function handleCreateApplication(request: Request, env: RuntimeEnv) {
   const mode = requireStorage(request, env);
+  const user = await currentUser(request, mode, env);
+  if (!user) throw new HttpError(401, "Please sign in before submitting an application.");
+  const userId = user.id;
   const form = await request.formData();
   const answers = parseAnswers(form.get("answers"));
   const pan = requireUpload(form.get("panDocument"), DOCUMENT_TYPES, "PAN document");
@@ -456,6 +651,7 @@ async function handleCreateApplication(request: Request, env: RuntimeEnv) {
     payment_qr_type: null,
     fee_paid_marked_at: null,
     loan_transferred_at: null,
+    user_id: userId,
     answers_json: JSON.stringify(answers),
     status: "pending",
     pan_document_key: panKey,
@@ -630,7 +826,7 @@ async function handlePaymentSetup(request: Request, env: RuntimeEnv, id: string)
   }
   const upiValue = form.get("paymentUpiId");
   const upiId = typeof upiValue === "string" ? upiValue.trim() : "";
-  if (upiId && !/^[\w.\-]{2,64}@[A-Za-z]{2,32}$/.test(upiId)) {
+  if (upiId && !/^[\w.-]{2,64}@[A-Za-z]{2,32}$/.test(upiId)) {
     throw new HttpError(400, "Enter a valid UPI ID, such as name@bank.");
   }
   const qrValue = form.get("paymentQr");
@@ -710,13 +906,41 @@ export async function handleLoanApiRequest(
     if (request.method === "POST" && url.pathname === "/api/applications") {
       return await handleCreateApplication(request, env);
     }
+    if (request.method === "POST" && url.pathname === "/api/auth/register") {
+      return await handleRegister(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/api/auth/login") {
+      return await handleUserLogin(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      return json(
+        { ok: true },
+        200,
+        new Headers({ "set-cookie": `${USER_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` }),
+      );
+    }
+    if (request.method === "GET" && url.pathname === "/api/auth/me") {
+      const mode = requireStorage(request, env);
+      const user = await currentUser(request, mode, env);
+      if (!user) throw new HttpError(401, "Not signed in.");
+      return json(publicUser(user));
+    }
+    if (request.method === "GET" && url.pathname === "/api/admin/users") {
+      await requireAdmin(request, env);
+      const mode = requireStorage(request, env);
+      return json((await listUsers(mode, env)).map(publicUser));
+    }
     if (request.method === "POST" && url.pathname === "/api/admin/login") {
       return await handleAdminLogin(request, env);
     }
     if (request.method === "GET" && url.pathname === "/api/admin/applications") {
       await requireAdmin(request, env);
       const mode = requireStorage(request, env);
-      return json((await getApplications(mode, env)).map(adminApplication));
+      const rows = await getApplications(mode, env);
+      const accounts = new Map((await listUsers(mode, env)).map((user) => [user.id, user]));
+      return json(
+        rows.map((row) => adminApplication(row, row.user_id ? accounts.get(row.user_id) : null)),
+      );
     }
 
     const disbursementMatch = url.pathname.match(/^\/api\/applications\/([^/]+)\/disbursement$/);

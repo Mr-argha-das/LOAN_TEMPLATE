@@ -3,21 +3,26 @@ import { useEffect, useMemo, useState } from "react";
 import { CholaHeader } from "@/components/CholaHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileCheck2, LoaderCircle, Upload } from "lucide-react";
+import { FileCheck2, LoaderCircle, LogOut, Upload } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { SiteFooter } from "@/components/SiteFooter";
 import bannerImg from "@/assets/loan-banner.jpg";
 import {
   ACCEPTED_DOCUMENT_TYPES,
   APPLICATIONS_CHANGED_EVENT,
+  AUTH_CHANGED_EVENT,
   createLoanApplication,
   getActiveLoanApplication,
+  getCurrentUser,
+  logoutUser,
   readUpload,
   type ApplicationStatus,
+  type AuthUser,
   type LoanApplicationAnswers,
   type SelectedUpload,
 } from "@/lib/loan-applications";
 import { LoanDisbursement } from "@/components/LoanDisbursement";
+import { AuthPanel } from "@/components/AuthPanel";
 
 const PAN_PATTERN = /^[A-Z]{5}\d{4}[A-Z]$/;
 
@@ -112,10 +117,24 @@ function Index() {
   const [submissionError, setSubmissionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [application, setApplication] = useState<ApplicationStatus>();
+  const [user, setUser] = useState<AuthUser>();
+  const [authChecked, setAuthChecked] = useState(false);
 
   const set = (patch: Partial<LoanApplicationAnswers>) => setAnswers((a) => ({ ...a, ...patch }));
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const prev = () => setStep((s) => Math.max(s - 1, 0));
+
+  useEffect(() => {
+    const refreshUser = () => {
+      void getCurrentUser()
+        .then(setUser)
+        .catch(() => undefined)
+        .finally(() => setAuthChecked(true));
+    };
+    refreshUser();
+    window.addEventListener(AUTH_CHANGED_EVENT, refreshUser);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, refreshUser);
+  }, []);
 
   useEffect(() => {
     const refreshApplication = () => {
@@ -123,6 +142,10 @@ function Index() {
         .then(setApplication)
         .catch(() => undefined);
     };
+    if (!user) {
+      setApplication(undefined);
+      return;
+    }
     refreshApplication();
     window.addEventListener("storage", refreshApplication);
     window.addEventListener(APPLICATIONS_CHANGED_EVENT, refreshApplication);
@@ -132,7 +155,19 @@ function Index() {
       window.removeEventListener(APPLICATIONS_CHANGED_EVENT, refreshApplication);
       window.clearInterval(timer);
     };
-  }, []);
+  }, [user]);
+
+  const signOut = async () => {
+    await logoutUser();
+    setUser(undefined);
+    setApplication(undefined);
+    setStep(0);
+    setAnswers(EMPTY);
+    setPanDocument(undefined);
+    setAadhaarFrontDocument(undefined);
+    setAadhaarBackDocument(undefined);
+    setSubmissionError("");
+  };
 
   const selectDocument = (
     file: File | undefined,
@@ -234,7 +269,29 @@ function Index() {
           />
         </div>
 
-        {application?.status === "approved" ? (
+        {user && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-border/60 bg-card/60 px-4 py-3 text-sm backdrop-blur-sm">
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-foreground">Hi, {user.fullName}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <LogOut className="h-4 w-4" /> Logout
+            </button>
+          </div>
+        )}
+
+        {!authChecked ? (
+          <div className="mt-4 rounded-md border border-border/60 bg-card/60 px-5 py-14 text-center backdrop-blur-sm">
+            <LoaderCircle className="mx-auto h-10 w-10 animate-spin text-primary" />
+          </div>
+        ) : !user ? (
+          <AuthPanel onAuthenticated={setUser} />
+        ) : application?.status === "approved" ? (
           <LoanDisbursement
             key={application.id}
             application={application}
